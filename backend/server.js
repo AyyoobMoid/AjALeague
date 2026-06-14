@@ -12,7 +12,6 @@ const PORT = process.env.PORT || 3000;
 const SECRET = process.env.JWT_SECRET || "football_points_secret_key";
 const FOOTBALL_API_KEY = process.env.FOOTBALL_API_KEY || "4756663574ab4d2f980aa1ac8b41dab7";
 const ODDS_API_KEY = process.env.ODDS_API_KEY || "69a4b7e72c93d662cb2f42ac703f2bef";
-const ODDS_API_KEY = process.env.ODDS_API_KEY || "69a4b7e72c93d662cb2f42ac703f2bef";
 
 // Maps your DB team names <-> football-data.org team names
 const TEAM_NAME_MAP = {
@@ -758,110 +757,6 @@ app.post("/api/admin/set-odds", auth, adminOnly, (req, res) => {
 app.post("/api/admin/refresh-odds", auth, adminOnly, (req, res) => {
   fetchAndStoreOdds();
   res.json({ message: "Odds refresh triggered" });
-});
-
-// ─── ODDS: fetch from The Odds API ───────────────────────────────────────────
-
-async function fetchOddsForMatch(teamA, teamB) {
-  try {
-    const res = await fetch(
-      "https://api.the-odds-api.com/v4/sports/soccer_fifa_world_cup/odds/?apiKey=" + ODDS_API_KEY + "&regions=eu&markets=h2h&oddsFormat=decimal"
-    );
-    if (!res.ok) {
-      console.log("Odds API error:", res.status);
-      return null;
-    }
-    const data = await res.json();
-
-    // Find the match — try both team orderings
-    const match = data.find(m =>
-      (m.home_team.includes(teamA) || teamA.includes(m.home_team) ||
-       m.away_team.includes(teamA) || teamA.includes(m.away_team)) &&
-      (m.home_team.includes(teamB) || teamB.includes(m.home_team) ||
-       m.away_team.includes(teamB) || teamB.includes(m.away_team))
-    );
-
-    if (!match || !match.bookmakers || match.bookmakers.length === 0) return null;
-
-    // Use first available bookmaker
-    const book = match.bookmakers[0];
-    const h2h = book.markets.find(m => m.key === "h2h");
-    if (!h2h) return null;
-
-    const outcomes = h2h.outcomes;
-    const homeOdds = outcomes.find(o => o.name === match.home_team);
-    const awayOdds = outcomes.find(o => o.name === match.away_team);
-    const drawOdds = outcomes.find(o => o.name === "Draw");
-
-    // Map to our DB team names
-    const teamAIsHome = match.home_team.includes(teamA) || teamA.includes(match.home_team);
-
-    return {
-      odds_a: teamAIsHome ? (homeOdds ? homeOdds.price : null) : (awayOdds ? awayOdds.price : null),
-      odds_b: teamAIsHome ? (awayOdds ? awayOdds.price : null) : (homeOdds ? homeOdds.price : null),
-      odds_draw: drawOdds ? drawOdds.price : null
-    };
-  } catch (err) {
-    console.log("Odds fetch error:", err.message);
-    return null;
-  }
-}
-
-// ─── GET ODDS FOR A MATCH ─────────────────────────────────────────────────────
-
-app.get("/api/match-odds/:matchId", async (req, res) => {
-  db.get("SELECT * FROM matches WHERE id = ?", [req.params.matchId], async (err, match) => {
-    if (err || !match) return res.status(404).json({ message: "Match not found" });
-
-    // If odds already stored, return them
-    if (match.odds_a && match.odds_b) {
-      return res.json({ odds_a: match.odds_a, odds_b: match.odds_b, odds_draw: match.odds_draw });
-    }
-
-    // Otherwise fetch fresh
-    const odds = await fetchOddsForMatch(match.team_a, match.team_b);
-    if (!odds) return res.json({ odds_a: null, odds_b: null, odds_draw: null });
-
-    // Store in DB for future
-    db.run(
-      "UPDATE matches SET odds_a = ?, odds_b = ?, odds_draw = ? WHERE id = ?",
-      [odds.odds_a, odds.odds_b, odds.odds_draw, match.id],
-      () => res.json(odds)
-    );
-  });
-});
-
-// ─── ADMIN: REFRESH ODDS FOR A MATCH ─────────────────────────────────────────
-
-app.post("/api/admin/refresh-odds/:matchId", auth, adminOnly, async (req, res) => {
-  db.get("SELECT * FROM matches WHERE id = ?", [req.params.matchId], async (err, match) => {
-    if (err || !match) return res.status(404).json({ message: "Match not found" });
-
-    const odds = await fetchOddsForMatch(match.team_a, match.team_b);
-    if (!odds) return res.status(404).json({ message: "No odds found for this match" });
-
-    db.run(
-      "UPDATE matches SET odds_a = ?, odds_b = ?, odds_draw = ? WHERE id = ?",
-      [odds.odds_a, odds.odds_b, odds.odds_draw, match.id],
-      () => res.json({ message: "Odds updated", ...odds })
-    );
-  });
-});
-
-// ─── ADMIN: SET ODDS MANUALLY ─────────────────────────────────────────────────
-
-app.post("/api/admin/set-odds", auth, adminOnly, (req, res) => {
-  const { matchId, oddsA, oddsB, oddsDraw } = req.body;
-  if (!matchId) return res.status(400).json({ message: "Match ID required" });
-
-  db.run(
-    "UPDATE matches SET odds_a = ?, odds_b = ?, odds_draw = ? WHERE id = ?",
-    [parseFloat(oddsA) || null, parseFloat(oddsB) || null, parseFloat(oddsDraw) || null, matchId],
-    (err) => {
-      if (err) return res.status(500).json({ message: "Could not update odds" });
-      res.json({ message: "Odds updated" });
-    }
-  );
 });
 
 
