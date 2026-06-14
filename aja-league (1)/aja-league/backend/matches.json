@@ -1,0 +1,69 @@
+[
+  {
+    "stage": "Group Stage",
+    "group": "Group A",
+    "teamA": "Mexico",
+    "teamB": "South Africa",
+    "matchTime": "2026-06-11T23:00:00+04:00",
+    "venue": "Mexico City Stadium (Mexico City)"
+  },
+  {
+    "stage": "Group Stage",
+    "group": "Group A",
+    "teamA": "Korea Republic",
+    "teamB": "Czechia",
+    "matchTime": "2026-06-12T06:00:00+04:00",
+    "venue": "Guadalajara Stadium (Guadalajara)"
+  },
+  {
+    "stage": "Group Stage",
+    "group": "Group B",
+    "teamA": "Canada",
+    "teamB": "Bosnia and Herzegovina",
+    "matchTime": "2026-06-12T23:00:00+04:00",
+    "venue": "Toronto Stadium (Toronto)"
+  },
+  {
+    "stage": "Group Stage",
+    "group": "Group D",
+    "teamA": "USA",
+    "teamB": "Paraguay",
+    "matchTime": "2026-06-13T05:00:00+04:00",
+    "venue": "Los Angeles Stadium (Los Angeles)"
+  },
+  {
+    "stage": "Group Stage",
+    "group": "Group B",
+    "teamA": "Qatar",
+    "teamB": "Switzerland",
+    "matchTime": "2026-06-13T23:00:00+04:00",
+    "venue": "San Francisco Bay Area Stadium (San Francisco Bay Area)"
+  },
+{
+  "stage": "Test Match",
+  "group": "Testing",
+  "teamA": "Portugal",
+  "teamB": "Argentina",
+  "matchTime": "2026-06-03T14:00:00+04:00",
+  "venue": "Dubai Test Stadium"
+},
+{
+  "stage": "Test Match",
+  "group": "Testing",
+  "teamA": "DubaiA",
+  "teamB": "DubaiB",
+  "matchTime": "2026-06-03T14:00:00+04:00",
+  "venue": "Dubai Test Stadium"
+},
+
+{
+  "stage": "Test Match",
+  "group": "Testing",
+  "teamA": "Dubai",
+  "teamB": "Sharjah",
+  "matchTime": "2026-06-03T14:00:00+04:00",
+  "venue": "Dubai Test Stadium"
+}
+
+
+]
