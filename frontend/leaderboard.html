@@ -1,0 +1,376 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Live Leaderboard</title>
+  <link rel="stylesheet" href="style.css"/>
+</head>
+<body>
+
+  <video autoplay muted loop playsinline id="bgVideo">
+    <source src="assets/stadium.mp4" type="video/mp4">
+  </video>
+
+  <audio id="settledSound" src="assets/sounds/settled.mp3"></audio>
+  <audio id="rankupSound" src="assets/sounds/rankup.mp3"></audio>
+  <audio
+  id="bgMusic"
+  src="assets/music/bgmusic.mp3"
+  loop
+></audio>
+
+<div id="settlementPopup" class="settlement-popup hidden">
+  <h1>⚽ MATCH SETTLED</h1>
+  <h2 id="settlementTitle"></h2>
+  <p>Leaderboard updated</p>
+</div>
+
+<div id="profileModal" class="profile-modal hidden">
+
+  <div class="profile-card-tv">
+
+    <button
+      class="close-profile"
+      onclick="closeUserProfile()"
+    >
+      ✕
+    </button>
+
+    <h1 id="profileUsername"></h1>
+
+    <div class="profile-grid">
+
+      <div>
+        <span>Full Name</span>
+        <p id="profileFullName"></p>
+      </div>
+
+      <div>
+        <span>Room</span>
+        <p id="profileRoom"></p>
+      </div>
+
+      <div>
+        <span>Country</span>
+        <p id="profileCountry"></p>
+      </div>
+
+      <div>
+        <span>Points</span>
+        <p id="profilePoints"></p>
+      </div>
+
+      <div>
+        <span>Total Predictions</span>
+        <p id="profilePredictions"></p>
+      </div>
+
+      <div>
+        <span>Wins</span>
+        <p id="profileWins"></p>
+      </div>
+
+      <div>
+        <span>Success Rate</span>
+        <p id="profileRate"></p>
+      </div>
+
+      <div>
+        <span>Joined</span>
+        <p id="profileJoined"></p>
+      </div>
+
+    </div>
+
+  </div>
+
+</div>
+
+  
+
+  <div class="tv-page">
+    <div class="tv-header">
+      <img src="assets/logoo.png" class="tv-logo" alt="AJA Logo">
+
+      <div>
+        <h1>AJA League</h1>
+        <p>Top 15 Live Leaderboard</p>
+      </div>
+    </div>
+
+    <div class="tv-top-three" id="tvTopThree"></div>
+
+    <div class="tv-board" id="tvLeaderboard"></div>
+
+
+  </div>
+
+  <script>
+    const API = "/api";
+    window.addEventListener("click", () => {
+
+  const music = document.getElementById("bgMusic");
+
+  if (music && music.paused) {
+
+    music.volume = 0.02;
+
+    music.play().catch(() => {});
+
+  }
+
+}, { once: true });
+
+    let previousLeaderboard = [];
+    let lastSettlementId = localStorage.getItem("lastSettlementId");
+
+    function playTVSound(id) {
+      const sound = document.getElementById(id);
+      if (!sound) return;
+
+      sound.currentTime = 0;
+      sound.volume = 0.4;
+      sound.play().catch(() => {});
+    }
+
+    async function openUserProfile(username) {
+
+  try {
+
+    const token = localStorage.getItem("token");
+
+    const res = await fetch(
+      `${API}/user-profile/${username}`,
+      {
+        headers: {
+          "Authorization": token
+        }
+      }
+    );
+
+    const data = await res.json();
+
+    document.getElementById("profileUsername").innerText =
+      data.username;
+
+    document.getElementById("profileFullName").innerText =
+      data.fullName;
+
+    document.getElementById("profileRoom").innerText =
+      data.roomNumber;
+
+    document.getElementById("profileCountry").innerText =
+      data.country;
+
+    document.getElementById("profilePoints").innerText =
+      data.points;
+
+    document.getElementById("profilePredictions").innerText =
+      data.totalPredictions;
+
+    document.getElementById("profileWins").innerText =
+      data.wins;
+
+    document.getElementById("profileRate").innerText =
+      data.successRate + "%";
+
+    document.getElementById("profileJoined").innerText =
+      new Date(data.joined).toLocaleDateString();
+
+    document
+      .getElementById("profileModal")
+      .classList.remove("hidden");
+
+  } catch (error) {
+
+    console.log(error);
+
+  }
+}
+
+function closeUserProfile() {
+
+  document
+    .getElementById("profileModal")
+    .classList.add("hidden");
+
+}
+
+
+
+    function getRank(points) {
+      points = Number(points);
+
+      if (points >= 50000) return "Legend 👑";
+      if (points >= 20000) return "Champion 🟣";
+      if (points >= 10000) return "Elite 🔵";
+      if (points >= 5000) return "Semi Pro 🟢";
+
+      return "Rookie ⚪";
+    }
+
+
+
+    async function loadLeaderboardTV() {
+      try {
+        const res = await fetch(`${API}/leaderboard`);
+        const data = await res.json();
+
+        const topBox = document.getElementById("tvTopThree");
+        const board = document.getElementById("tvLeaderboard");
+
+        topBox.innerHTML = "";
+        board.innerHTML = "";
+
+        if (!data || data.length === 0) {
+          board.innerHTML = `
+            <p class="tv-empty">
+              No leaderboard data available.
+            </p>
+          `;
+          return;
+        }
+
+        const topThree = data.slice(0, 3);
+
+        topThree.forEach((user, index) => {
+          let medal = "👑";
+
+          if (index === 1) medal = "🥈";
+          if (index === 2) medal = "🥉";
+
+          topBox.innerHTML += `
+            <div class="tv-podium tv-rank-${index + 1}">
+              <div class="tv-medal">
+                ${medal}
+              </div>
+
+              <h2>#${index + 1}</h2>
+              <h3>${user.full_name || user.username}</h3>
+              <p>${user.points} pts</p>
+              <span>${getRank(user.points)}</span>
+            </div>
+          `;
+        });
+
+        let rankUpDetected = false;
+
+        data.forEach((user, index) => {
+          let badge = "⚽";
+
+          if (index === 0) badge = "👑";
+          if (index === 1) badge = "🥈";
+          if (index === 2) badge = "🥉";
+
+          const oldIndex = previousLeaderboard.findIndex(
+            oldUser => oldUser.username === user.username
+          );
+
+          let movement = "";
+          let rowClass = "";
+
+          if (oldIndex !== -1) {
+            if (oldIndex > index) {
+              movement = `
+                <span class="rank-arrow up">
+                  ↑ ${oldIndex - index}
+                </span>
+              `;
+
+              rowClass = "rank-up";
+              rankUpDetected = true;
+
+            } else if (oldIndex < index) {
+              movement = `
+                <span class="rank-arrow down">
+                  ↓ ${index - oldIndex}
+                </span>
+              `;
+
+              rowClass = "rank-down";
+            }
+          }
+
+          board.innerHTML += `
+            <div class="tv-row ${rowClass}">
+              <div class="tv-position">
+                ${badge} #${index + 1}
+                ${movement}
+              </div>
+
+<div 
+  class="tv-name clickable-user"
+  onclick="openUserProfile('${user.username}')"
+>
+  ${user.full_name || user.username}
+</div>
+
+              <div class="tv-rank">
+                ${getRank(user.points)}
+              </div>
+
+              <div class="tv-points">
+                ${user.points} pts
+              </div>
+            </div>
+          `;
+        });
+
+        if (rankUpDetected) {
+          playTVSound("rankupSound");
+        }
+
+        previousLeaderboard = data.slice(0, 15);
+
+      } catch (error) {
+        console.log("Leaderboard failed", error);
+      }
+    }
+
+    async function checkLatestSettlement() {
+      try {
+        const res = await fetch(`${API}/latest-settlement`);
+        const data = await res.json();
+
+        if (!data || !data.id) return;
+
+        if (String(data.id) !== String(lastSettlementId)) {
+          lastSettlementId = data.id;
+          localStorage.setItem("lastSettlementId", data.id);
+
+          showSettlementPopup(data.settlement_message || "Match result updated");
+
+          setTimeout(() => {
+            loadLeaderboardTV();
+          }, 800);
+        }
+
+      } catch (error) {
+        console.log("Settlement check failed", error);
+      }
+    }
+
+    function showSettlementPopup(message) {
+      const popup = document.getElementById("settlementPopup");
+      const title = document.getElementById("settlementTitle");
+
+      title.innerText = message;
+
+      playTVSound("settledSound");
+
+      popup.classList.remove("hidden");
+
+      setTimeout(() => {
+        popup.classList.add("hidden");
+      }, 5000);
+    }
+
+    loadLeaderboardTV();
+    checkLatestSettlement();
+
+ 
+  </script>
+
+</body>
+</html>

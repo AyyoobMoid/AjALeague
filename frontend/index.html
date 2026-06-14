@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>AJA League</title>
+  <link rel="stylesheet" href="style.css"/>
+</head>
+<body>
+
+  <video autoplay muted loop playsinline id="bgVideo">
+    <source src="assets/stadium.mp4" type="video/mp4">
+  </video>
+
+  <div class="app">
+
+    <div id="notificationBox" class="notification-box hidden"></div>
+
+<div id="registerNoticeModal" class="modal-overlay hidden">
+  <div class="modal-card">
+    <h2>Welcome to AJA Prediction League</h2>
+
+    <p>Before creating your account, please read and accept the following:</p>
+
+    <ul>
+      <li>This league is for AJA family and community members.</li>
+      <li>This is not a betting platform and has no real-money gambling.</li>
+      <li>Points are only for fun, ranking, and community engagement.</li>
+      <li>By joining, you agree to follow AJA League rules and terms.</li>
+      <li>⚠️ AJA LEAGUE RESERVES THE RIGHT TO DISQUALIFY any participant found engaging in cheating, unfair play, or misuse of the platform. All decisions made by AJA League are final.</li>
+    </ul>
+
+    <button onclick="acceptRegisterNotice()">I Understand & Agree</button>
+  </div>
+</div>
+
+<div id="dashboardNoticeModal" class="modal-overlay hidden">
+
+  <div class="modal-card">
+
+    <h2>Welcome to AJA Prediction League</h2>
+
+    <p>Please remember:</p>
+
+    <ul>
+      <li>Respect all AJA members and community guidelines.</li>
+
+      <li>
+        This platform is only for entertainment and engagement.
+      </li>
+
+      <li>
+        No real-money betting or gambling is involved.
+      </li>
+
+      <li>
+        Fair play and respectful participation are expected.
+      </li>
+    </ul>
+
+    <button onclick="enterDashboard()">
+      Continue to Dashboard
+    </button>
+
+  </div>
+
+</div>
+
+    <!-- LOGIN PAGE -->
+    <section id="loginPage" class="page">
+<div class="auth-card">
+
+  <img
+    src="assets/logoo.png"
+    class="yugo-logo"
+    alt="AJA Logo"
+  >
+
+  <h1>⚽ AJA League</h1>
+        <h2>Login Details</h2>
+
+        <input type="text" id="loginUsername" placeholder="Username">
+        <input type="password" id="loginPassword" placeholder="Password">
+
+        <button onclick="login()">Login</button>
+
+        <p class="switch-text">
+          Don’t have an account?
+          <span onclick="showRegister()">Register here</span>
+        </p>
+<p class="forgot-password-note">
+🔒 Password recovery is currently unavailable. Please keep your password safe. If you forget it, you will need to create a new account.
+<br><br>
+📧 Questions? Contact the AJA League Administrator at ayyoobmoid@gmail.com.
+</p>
+      </div>
+    </section>
+
+    <!-- REGISTER PAGE -->
+    <section id="registerPage" class="page hidden">
+<div class="auth-card">
+
+  <img
+    src="assets/logoo.png"
+    class="yugo-logo"
+    alt="AJA Logo"
+  >
+
+  <h1>⚽ AJA League</h1>
+        <h2>Create Account</h2>
+
+<input type="text" id="registerUsername" placeholder="Choose username">
+
+<input type="password" id="registerPassword" placeholder="Choose password">
+
+<input type="text" id="registerFullName" placeholder="Full name">
+
+<input type="text" id="registerCountry" placeholder="Country">
+
+        <button onclick="register()">Register</button>
+
+        <p class="switch-text">
+          Already have an account?
+          <span onclick="showLogin()">Back to login</span>
+        </p>
+      </div>
+    </section>
+
+   <!-- DASHBOARD PAGE -->
+<section id="dashboardPage" class="page hidden">
+
+  <div class="topbar">
+    <div class="brand-title">
+      <img src="assets/logoo.png" class="topbar-logo" alt="AJA Logo">
+      <h2>AJA League</h2>
+    </div>
+
+    <button class="logout-btn" onclick="logout()">Logout</button>
+  </div>
+
+   <div class="live-ticker">
+    <div class="ticker-track">
+      <span>
+      🏆 Welcome to AJA League •
+      ⚽ Prediction closes 5 minutes before kickoff •
+      🎯 Predict wisely and climb the leaderboard •
+      🏠 Only for AJA family and community members •
+      🚫 This is not a betting platform •
+      🔥 Live leaderboard updates after every settled match •
+</span>
+<span>
+      🏆 Welcome to AJA League •
+      ⚽ Prediction closes 5 minutes before kickoff •
+      🎯 Predict wisely and climb the leaderboard •
+      🏠 Only for AJA family and community members •
+      🚫 This is not a betting platform •
+      🔥 Live leaderboard updates after every settled match •
+</span>
+    </div>
+  </div>
+
+<div class="hero-banner">
+  <div class="hero-left">
+    <h1>Welcome back, <span id="heroUsername">Player</span></h1>
+    <p>Your current rank is <strong id="heroRank">Rookie ⚪</strong></p>
+  </div>
+
+<div class="points-rules-box">
+  <h3>⚽ Points Rules</h3>
+
+  <p>🎁 Start with <strong class="green-text">5,000 points</strong></p>
+
+  <p>✅ Correct Prediction = <strong class="green-text">Double Your Stake</strong></p>
+
+  <p>🤝 Draw Prediction = <strong class="yellow-text">1.5x Your Stake</strong></p>
+
+  <p>❌ Wrong Prediction = <strong class="red-text">Lose Points Used</strong></p>
+
+  <p>🏆 Highest Points Win Cash Prizes</p>
+</div>
+
+  <div class="hero-points">
+    <span id="heroPoints">0</span>
+    <small>points</small>
+  </div>
+</div>
+
+  <div class="quick-stats-grid">
+    <div class="quick-stat">
+      <span>🎯</span>
+      <h4>Total Predictions</h4>
+      <p id="quickTotalPredictions">0</p>
+    </div>
+
+    <div class="quick-stat">
+      <span>✅</span>
+      <h4>Wins</h4>
+      <p id="quickWins">0</p>
+    </div>
+
+    <div class="quick-stat">
+      <span>📈</span>
+      <h4>Success Rate</h4>
+      <p id="quickSuccessRate">0%</p>
+    </div>
+
+    <div class="quick-stat">
+      <span>🏆</span>
+      <h4>Current Rank</h4>
+      <p id="quickRank">Rookie ⚪</p>
+    </div>
+  </div>
+
+  <div class="dashboard-grid">
+
+    <div class="dash-card profile-card">
+      <div class="avatar-circle">👤</div>
+      <h3>Player</h3>
+      <p id="dashboardUsername">-</p>
+      <span class="online-status">● Online</span>
+    </div>
+
+    <div class="dash-card points-card">
+      <div class="points-icon">💎</div>
+      <h3>Your Points</h3>
+      <p id="dashboardPoints">0</p>
+      <span class="points-subtitle">Current Balance</span>
+    </div>
+
+    <div class="dash-card rank-card">
+      <div class="rank-badge">🏆</div>
+      <h3>Your Rank</h3>
+      <p id="dashboardRank">Rookie ⚪</p>
+      <span class="rank-subtitle">League Status</span>
+    </div>
+
+    <div class="dash-card actions-card">
+      <h3>Actions</h3>
+
+      <div class="action-grid">
+        <button onclick="showLeaderboardSection()">🏅 Leaderboard</button>
+        <button onclick="showMatchesSection()">⚽ Matches</button>
+        <button onclick="showHistorySection()">📜 History</button>
+        <button onclick="showStatsSection()">📊 Stats</button>
+      </div>
+    </div>
+
+  </div>
+
+  <div class="dash-card full hidden" id="leaderboardSection">
+    <h3>Leaderboard</h3>
+    <div id="leaderboard"></div>
+  </div>
+
+  <div class="dash-card full hidden" id="matchesSection">
+    <h3>Matches</h3>
+    <p class="small-text">Click a date to view matches for that day.</p>
+    <div id="matches"></div>
+  </div>
+
+  <div class="dash-card full hidden" id="historySection">
+    <h3>Prediction History</h3>
+    <div id="predictionHistory"></div>
+  </div>
+
+  <div class="dash-card full hidden" id="statsSection">
+    <h3>Profile Statistics</h3>
+    <div id="profileStats"></div>
+  </div>
+
+</section>
+
+  </div>
+  <!-- User History Modal -->
+  <div id="userHistoryModal" class="modal-overlay hidden">
+    <div class="modal-box">
+      <div class="modal-header">
+        <h3 id="userHistoryTitle">Player History</h3>
+        <button class="modal-close" onclick="closeUserHistory()">✕</button>
+      </div>
+      <div id="userHistoryStats" class="user-history-stats"></div>
+      <div id="userHistoryList" class="user-history-list"></div>
+    </div>
+  </div>
+
+  <audio id="predictSound" src="assets/sounds/prediction.mp3"></audio>
+  <script src="app.js"></script>
+</body>
+</html>
