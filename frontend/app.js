@@ -139,9 +139,7 @@ async function register() {
   const username = document.getElementById("registerUsername").value.trim();
   const password = document.getElementById("registerPassword").value.trim();
   const fullName = document.getElementById("registerFullName").value.trim();
-  const country = document.getElementById("registerCountry").value.trim();
-
-  if (!username || !password || !fullName || !country) {
+  if (!username || !password || !fullName) {
     alert("Please fill all registration fields.");
     return;
   }
@@ -156,6 +154,7 @@ async function register() {
         username,
         password,
         fullName,
+        roomNumber,
         country,
         deviceId: getDeviceId()
       })
@@ -169,7 +168,6 @@ async function register() {
       document.getElementById("registerUsername").value = "";
       document.getElementById("registerPassword").value = "";
       document.getElementById("registerFullName").value = "";
-      document.getElementById("registerCountry").value = "";
 
       showLogin();
     } else {

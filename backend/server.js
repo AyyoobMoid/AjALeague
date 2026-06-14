@@ -15,9 +15,12 @@ const FOOTBALL_API_KEY = process.env.FOOTBALL_API_KEY || "4756663574ab4d2f980aa1
 // Maps your DB team names <-> football-data.org team names
 const TEAM_NAME_MAP = {
   "USA": "United States",
+  "Curacao": "Curaçao",
   "Korea Republic": "Korea Republic",
   "Czechia": "Czechia",
   "Bosnia and Herzegovina": "Bosnia and Herzegovina",
+  "Ivory Coast": "Côte d'Ivoire",
+  "Cabo Verde": "Cape Verde",
 };
 
 // Reverse map built once at startup for performance
@@ -57,9 +60,9 @@ function adminOnly(req, res, next) {
 // ─── AUTH ────────────────────────────────────────────────────────────────────
 
 app.post("/api/register", async (req, res) => {
-  const { username, password, fullName, country, deviceId } = req.body;
+  const { username, password, fullName, deviceId } = req.body;
 
-  if (!username || !password || !fullName || !country) {
+  if (!username || !password || !fullName) {
     return res.status(400).json({ message: "All registration fields are required" });
   }
 
@@ -67,8 +70,8 @@ app.post("/api/register", async (req, res) => {
     const hashed = await bcrypt.hash(password, 10);
     db.run(
       `INSERT INTO users (username, password, full_name, country, device_id, points)
-       VALUES (?, ?, ?, ?, ?, 5000)`,
-      [username, hashed, fullName, country, deviceId || ""],
+       VALUES (?, ?, ?, 'N/A', ?, 5000)`,
+      [username, hashed, fullName, deviceId || ""],
       function (err) {
         if (err) return res.status(400).json({ message: "Account could not be created" });
         return res.json({ message: "Account created successfully" });
@@ -352,10 +355,10 @@ async function autoSettleMatches() {
 
         // Fetch today's WC matches from football-data.org
         const today = new Date().toISOString().split("T")[0];
-        const yesterday = new Date(Date.now() - 86400000).toISOString().split("T")[0];
+        const threeDaysAgo = new Date(Date.now() - 3 * 86400000).toISOString().split("T")[0];
 
         const apiRes = await fetch(
-          `https://api.football-data.org/v4/competitions/WC/matches?dateFrom=${yesterday}&dateTo=${today}&status=FINISHED`,
+          `https://api.football-data.org/v4/competitions/WC/matches?dateFrom=${threeDaysAgo}&dateTo=${today}&status=FINISHED`,
           { headers: { "X-Auth-Token": FOOTBALL_API_KEY } }
         );
 
@@ -366,6 +369,8 @@ async function autoSettleMatches() {
 
         const apiData = await apiRes.json();
         const finishedMatches = apiData.matches || [];
+        console.log(`Auto-settle: found ${finishedMatches.length} finished matches from API`);
+        finishedMatches.forEach(m => console.log(` - ${m.homeTeam.name} vs ${m.awayTeam.name}`));
 
         for (const apiMatch of finishedMatches) {
           const homeTeam = toDbName(apiMatch.homeTeam.name);
