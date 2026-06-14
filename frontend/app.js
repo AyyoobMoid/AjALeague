@@ -156,7 +156,6 @@ async function register() {
         username,
         password,
         fullName,
-        roomNumber,
         country,
         deviceId: getDeviceId()
       })
