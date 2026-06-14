@@ -420,19 +420,26 @@ if (match.result) {
 
   <div class="prediction-box">
 
-    <input
-      type="number"
-      id="points-${match.id}"
-      placeholder="Enter points"
-    >
-
-    <button onclick="submitPrediction(${match.id}, '${match.team_a}')">
-      ${match.team_a}
-    </button>
-
-    <button onclick="submitPrediction(${match.id}, '${match.team_b}')">
-      ${match.team_b}
-    </button>
+    <div class="bet-options">
+      <button class="bet-btn" onclick="selectBet(${match.id}, '${match.team_a}', ${match.odds_a || 2})">
+        <span class="bet-team">${match.team_a}</span>
+        <span class="bet-odds">${match.odds_a ? match.odds_a + 'x' : '2.00x'}</span>
+      </button>
+      <button class="bet-btn draw-btn" onclick="selectBet(${match.id}, 'DRAW', ${match.odds_draw || 1.5})">
+        <span class="bet-team">Draw</span>
+        <span class="bet-odds">${match.odds_draw ? parseFloat(match.odds_draw).toFixed(2) + 'x' : '1.50x'}</span>
+      </button>
+      <button class="bet-btn" onclick="selectBet(${match.id}, '${match.team_b}', ${match.odds_b || 2})">
+        <span class="bet-team">${match.team_b}</span>
+        <span class="bet-odds">${match.odds_b ? match.odds_b + 'x' : '2.00x'}</span>
+      </button>
+    </div>
+    <div id="bet-slip-${match.id}" class="bet-slip hidden">
+      <p class="bet-slip-preview" id="bet-preview-${match.id}"></p>
+      <input type="number" id="points-${match.id}" placeholder="Points to bet (multiples of 5)" min="5" step="5"
+        oninput="updateBetPreview(${match.id})">
+      <button class="confirm-btn" onclick="confirmBet(${match.id})">Confirm Bet</button>
+    </div>
 
   </div>
 `;
@@ -919,3 +926,65 @@ document.addEventListener("click", function(e) {
   const modal = document.getElementById("userHistoryModal");
   if (e.target === modal) closeUserHistory();
 });
+
+
+// ─── ODDS-BASED BETTING ──────────────────────────────────────────────────────
+
+const activeBet = {}; // { matchId: { pick, odds } }
+
+function selectBet(matchId, pick, odds) {
+  activeBet[matchId] = { pick, odds };
+
+  const slip = document.getElementById("bet-slip-" + matchId);
+  slip.classList.remove("hidden");
+
+  const pointsInput = document.getElementById("points-" + matchId);
+  pointsInput.value = "";
+
+  const preview = document.getElementById("bet-preview-" + matchId);
+  preview.innerText = "Pick: " + pick + " @ " + odds + "x — enter points to see payout";
+}
+
+function updateBetPreview(matchId) {
+  const bet = activeBet[matchId];
+  if (!bet) return;
+
+  const pts = parseInt(document.getElementById("points-" + matchId).value) || 0;
+  const payout = Math.floor(pts * bet.odds);
+  const profit = payout - pts;
+
+  const preview = document.getElementById("bet-preview-" + matchId);
+  if (pts <= 0) {
+    preview.innerText = "Pick: " + bet.pick + " @ " + bet.odds + "x";
+  } else {
+    preview.innerText = "Pick: " + bet.pick + " @ " + bet.odds + "x — Bet " + pts + " pts → Win " + payout + " pts (+" + profit + " profit)";
+  }
+}
+
+async function confirmBet(matchId) {
+  const token = localStorage.getItem("token");
+  const bet = activeBet[matchId];
+  if (!bet) { alert("Select a team first."); return; }
+
+  const pts = parseInt(document.getElementById("points-" + matchId).value);
+  if (!pts || pts <= 0) { alert("Enter points to bet."); return; }
+  if (pts % 5 !== 0) { alert("Points must be a multiple of 5."); return; }
+
+  const res = await fetch(`${API}/predict`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "Authorization": token },
+    body: JSON.stringify({ matchId, selectedTeam: bet.pick, pointsUsed: pts, oddsUsed: bet.odds })
+  });
+
+  const data = await res.json();
+  if (res.ok) {
+    playPredictSound();
+    showNotification("Bet placed! " + bet.pick + " @ " + bet.odds + "x for " + pts + " pts");
+    document.getElementById("bet-slip-" + matchId).classList.add("hidden");
+    delete activeBet[matchId];
+    loadMatches();
+    refreshUserData();
+  } else {
+    alert(data.message || "Bet failed.");
+  }
+}

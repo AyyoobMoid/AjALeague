@@ -1647,3 +1647,76 @@ button:hover::after {
   transform: scale(1.01);
   transition: transform 0.15s ease;
 }
+
+/* ─── ODDS BETTING UI ────────────────────────────────────────────────── */
+.bet-options {
+  display: flex;
+  gap: 0.5rem;
+  margin: 0.75rem 0;
+  flex-wrap: wrap;
+}
+
+.bet-btn {
+  flex: 1;
+  min-width: 80px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 0.6rem 0.5rem;
+  background: rgba(255, 214, 0, 0.08);
+  border: 1px solid rgba(255, 214, 0, 0.3);
+  border-radius: 10px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  color: #fff;
+}
+
+.bet-btn:hover {
+  background: rgba(255, 214, 0, 0.18);
+  border-color: #ffd600;
+}
+
+.bet-btn .bet-team {
+  font-size: 0.8rem;
+  font-weight: 600;
+  text-align: center;
+}
+
+.bet-btn .bet-odds {
+  font-size: 1rem;
+  font-weight: 900;
+  color: #ffd600;
+  margin-top: 0.2rem;
+}
+
+.draw-btn {
+  background: rgba(100, 100, 100, 0.15);
+  border-color: rgba(200, 200, 200, 0.3);
+}
+
+.draw-btn .bet-odds {
+  color: #aaa;
+}
+
+.bet-slip {
+  background: rgba(255, 214, 0, 0.06);
+  border: 1px solid rgba(255, 214, 0, 0.2);
+  border-radius: 10px;
+  padding: 0.75rem;
+  margin-top: 0.5rem;
+}
+
+.bet-slip-preview {
+  font-size: 0.85rem;
+  color: #ffd600;
+  margin: 0 0 0.5rem;
+  font-weight: 600;
+}
+
+.confirm-btn {
+  margin-top: 0.5rem;
+  background: linear-gradient(135deg, #b38f00, #ffd600);
+  color: #000;
+  font-weight: 700;
+  width: 100%;
+}
