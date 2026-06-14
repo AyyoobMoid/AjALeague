@@ -127,7 +127,7 @@ app.get("/api/leaderboard", (req, res) => {
 // ─── MATCHES ─────────────────────────────────────────────────────────────────
 
 app.get("/api/matches", (req, res) => {
-  db.all("SELECT * FROM matches ORDER BY match_time ASC", [], (err, rows) => {
+  db.all("SELECT * FROM matches WHERE status != 'settled' ORDER BY match_time ASC", [], (err, rows) => {
     if (err) return res.status(500).json({ message: "Could not load matches" });
     return res.json(rows);
   });
