@@ -328,8 +328,17 @@ async function loadMatches() {
 
     const groupedByDate = {};
 
+    const now36 = new Date();
+    const cutoff = new Date(now36.getTime() + 36 * 60 * 60 * 1000); // 36 hours from now
+
     data.forEach(match => {
+      // Skip settled matches entirely
+      if (match.result || match.status === 'settled') return;
+
       const matchTime = new Date(match.match_time);
+
+      // Only show matches starting within the next 36 hours
+      if (matchTime > cutoff) return;
 
       const dateKey = matchTime.toLocaleDateString("en-GB", {
         day: "2-digit",
