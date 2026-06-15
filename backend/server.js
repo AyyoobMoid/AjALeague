@@ -10,7 +10,7 @@ const db = require("./database");
 const app = express();
 const PORT = process.env.PORT || 3000;
 const SECRET = process.env.JWT_SECRET || "football_points_secret_key";
-const FOOTBALL_API_KEY = process.env.FOOTBALL_API_KEY || "9a81c49274dc439096c7d625ce507deb";
+const FOOTBALL_API_KEY = process.env.FOOTBALL_API_KEY || "4756663574ab4d2f980aa1ac8b41dab7";
 const ODDS_API_KEY = process.env.ODDS_API_KEY || "69a4b7e72c93d662cb2f42ac703f2bef";
 
 // Maps your DB team names <-> football-data.org team names
@@ -262,14 +262,13 @@ app.get("/api/my-stats", auth, (req, res) => {
 
       rows.forEach((item) => {
         totalPointsUsed += item.points_used;
-        if (!item.result) pending++;
-        else if (item.result === "DRAW") draws++;
+        if (!item.result || !item.settled) pending++;
+        else if (item.result === "DRAW") { draws++; wins++; } // draws pay everyone
         else if (item.selected_team === item.result) wins++;
         else losses++;
       });
 
-      const settled = wins + losses + draws;
-      const successRate = settled > 0 ? Math.round((wins / settled) * 100) : 0;
+      const successRate = (wins + losses) > 0 ? Math.round((wins / (wins + losses)) * 100) : 0;
       res.json({ totalPredictions, wins, losses, draws, pending, totalPointsUsed, successRate });
     }
   );
@@ -305,18 +304,21 @@ function settleMatch(matchId, result, callback) {
           predictions.forEach((prediction) => {
             let reward = 0;
             const isWin = prediction.selected_team === result;
-            const isDraw = result === "DRAW" && prediction.selected_team === "DRAW";
-            if (isDraw) {
-              const odds = prediction.odds_used || parseFloat(match.odds_draw) || 1.5;
-              reward = Math.floor(prediction.points_used * odds);
-            } else if (isWin) {
+            // Payout always uses locked-in odds_used, never hardcoded multipliers
+            const isPaid = result === "DRAW" || isWin; // draws pay everyone
+            if (isPaid) {
               let odds;
               if (prediction.odds_used) {
-                odds = prediction.odds_used;
+                odds = parseFloat(prediction.odds_used);
+              } else if (result === "DRAW") {
+                odds = parseFloat(match.odds_draw) || null;
               } else {
-                odds = result === match.team_a ? (parseFloat(match.odds_a) || 2.0) : (parseFloat(match.odds_b) || 2.0);
+                odds = result === match.team_a ? parseFloat(match.odds_a) : parseFloat(match.odds_b);
               }
-              reward = Math.floor(prediction.points_used * odds);
+              if (odds) {
+                reward = Math.floor(prediction.points_used * odds);
+              }
+              // If no odds available at all, no payout (shouldn't happen)
             }
 
             db.run("UPDATE users SET points = points + ? WHERE id = ?", [reward, prediction.user_id], () => {
