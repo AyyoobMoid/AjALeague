@@ -848,8 +848,12 @@ app.post("/api/update-predict", auth, (req, res) => {
       const minutesSince = (now - placedAt) / (1000 * 60);
       const inCooldown = minutesSince <= 5;
 
-      if (amount < oldAmount && !inCooldown) {
+      if (!inCooldown && amount < oldAmount) {
         return res.status(400).json({ message: "You can only reduce your bet within 5 minutes of placing it" });
+      }
+
+      if (!inCooldown && selectedTeam !== existing.selected_team) {
+        return res.status(400).json({ message: "You can only change your pick within 5 minutes of placing it" });
       }
 
       db.get("SELECT points FROM users WHERE id = ?", [req.user.id], (err, user) => {
