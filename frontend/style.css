@@ -1863,3 +1863,28 @@ button:hover::after {
   cursor: not-allowed;
   filter: grayscale(0.5);
 }
+
+/* ─── HOUSE LEADERBOARD ENTRY ────────────────────────────────────────────── */
+.house-entry {
+  background: linear-gradient(135deg, rgba(20,10,0,0.95), rgba(40,20,0,0.95)) !important;
+  border: 1px solid rgba(255,214,0,0.6) !important;
+  box-shadow: 0 0 20px rgba(255,214,0,0.2);
+  margin-bottom: 8px;
+  cursor: default !important;
+}
+
+.house-entry:hover {
+  transform: none !important;
+  opacity: 1 !important;
+}
+
+.house-entry strong {
+  color: #ffd600;
+  font-size: 1rem;
+}
+
+.house-points {
+  color: #ffd600 !important;
+  font-size: 1.1rem;
+  font-weight: 900;
+}

@@ -236,8 +236,12 @@ let previousRanks = {};
 async function loadLeaderboard() {
   showSkeleton("leaderboard", 5);
   try {
-    const res = await fetch(`${API}/leaderboard`);
+    const [res, houseRes] = await Promise.all([
+      fetch(`${API}/leaderboard`),
+      fetch(`${API}/house-total`)
+    ]);
     const data = await res.json();
+    const houseData = await houseRes.json();
 
     const box = document.getElementById("leaderboard");
     box.innerHTML = "";
@@ -246,6 +250,23 @@ async function loadLeaderboard() {
       box.innerHTML = "<p>No players yet.</p>";
       return;
     }
+
+    // Pin house entry at top
+    const houseTotal = houseData.houseTotal || 0;
+    const houseSign = houseTotal >= 0 ? "+" : "";
+    box.innerHTML += `
+      <div class="leaderboard-item house-entry">
+        <span class="leader-badge">🏦</span>
+        <div class="leader-info">
+          <strong>The AJA House</strong>
+          <small>Always watching</small>
+        </div>
+        <div class="leader-points house-points">
+          ${houseSign}${houseTotal.toLocaleString()}
+          <span>pts</span>
+        </div>
+      </div>
+    `;
 
     const newRanks = {};
     data.forEach((user, index) => { newRanks[user.username] = index + 1; });
