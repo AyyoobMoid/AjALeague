@@ -318,10 +318,10 @@ function getCountdown(closeTime) {
   `;
 }
 
-async function loadMatches() {
+async function loadMatches(bustCache = false) {
   showSkeleton("matches", 3);
   try {
-    const cacheBust = arguments[0] === true ? `?t=${Date.now()}` : '';
+    const cacheBust = bustCache ? `?t=${Date.now()}` : '';
     const res = await fetch(`${API}/matches${cacheBust}`);
     const data = await res.json();
 
@@ -886,7 +886,7 @@ document.getElementById("quickSuccessRate").innerText = `${data.successRate}%`;
       </div>
 
       <div class="dash-card">
-        <h3>Wins</h3>
+        <h3>Wins (incl. draws)</h3>
         <p>${data.wins}</p>
       </div>
 
@@ -897,7 +897,7 @@ document.getElementById("quickSuccessRate").innerText = `${data.successRate}%`;
 
       <div class="dash-card">
         <h3>Draw Results</h3>
-        <p>${data.draws}</p>
+        <p>${data.draws} <span style="font-size:0.75rem;color:#aaa;">(paid 1.5x)</span></p>
       </div>
 
       <div class="dash-card">
@@ -1119,10 +1119,9 @@ async function confirmBet(matchId, isUpdate = false) {
     if (input) input.value = "";
     delete activeBet[matchId];
 
-    // Suppress the notification from refreshUserData since we already showed one
-    const savedPoints = lastKnownPoints;
+    // Set lastKnownPoints to null so refreshUserData updates display without showing a notification
+    lastKnownPoints = null;
     await refreshUserData();
-    lastKnownPoints = savedPoints; // prevent double notification
 
     // Run matches and leaderboard in parallel
     await Promise.all([loadMatches(true), loadLeaderboard()]);
@@ -1144,9 +1143,8 @@ async function cancelBet(matchId) {
 
   const data = await res.json();
   if (res.ok) {
-    const savedPoints = lastKnownPoints;
+    lastKnownPoints = null;
     await refreshUserData();
-    lastKnownPoints = savedPoints;
     showNotification("Bet cancelled — points refunded!");
     await Promise.all([loadMatches(true), loadLeaderboard()]);
   } else {
