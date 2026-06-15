@@ -1,3 +1,18 @@
+
+function showSkeleton(boxId, count=3) {
+  const box = document.getElementById(boxId);
+  if (!box) return;
+  let html = '';
+  for (let i = 0; i < count; i++) {
+    html += `<div class="skeleton-card">
+      <div class="skeleton skeleton-title"></div>
+      <div class="skeleton skeleton-line"></div>
+      <div class="skeleton skeleton-line-short"></div>
+    </div>`;
+  }
+  box.innerHTML = html;
+}
+
 const API = "/api";
 
 let lastKnownPoints = null;
@@ -212,7 +227,10 @@ hideAllDashboardSections();
   }
 }
 
+let previousRanks = {};
+
 async function loadLeaderboard() {
+  showSkeleton("leaderboard", 5);
   try {
     const res = await fetch(`${API}/leaderboard`);
     const data = await res.json();
@@ -225,29 +243,44 @@ async function loadLeaderboard() {
       return;
     }
 
+    const newRanks = {};
+    data.forEach((user, index) => { newRanks[user.username] = index + 1; });
+
     data.forEach((user, index) => {
       let badge = "⚽";
-
       if (index === 0) badge = "👑";
       if (index === 1) badge = "🥈";
       if (index === 2) badge = "🥉";
 
+      const currentRank = index + 1;
+      const prevRank = previousRanks[user.username];
+      let rankArrow = "";
+      if (prevRank && prevRank !== currentRank) {
+        if (prevRank > currentRank) {
+          rankArrow = `<span style="color:#22c55e;font-size:0.75rem;margin-left:4px">▲${prevRank - currentRank}</span>`;
+        } else {
+          rankArrow = `<span style="color:#ef4444;font-size:0.75rem;margin-left:4px">▼${currentRank - prevRank}</span>`;
+        }
+      }
+
       box.innerHTML += `
-        <div class="leaderboard-item rank-${index + 1}" onclick="showUserHistory('${user.username}')" style="cursor:pointer" title="View ${user.full_name || user.username}'s bet history">
+        <div class="leaderboard-item rank-${currentRank}" onclick="showUserHistory('${user.username}')" style="cursor:pointer" title="View ${user.full_name || user.username}'s bet history">
           <span class="leader-badge">${badge}</span>
 
           <div class="leader-info">
-            <strong>#${index + 1} ${user.full_name || user.username}</strong>
+            <strong>#${currentRank} ${user.full_name || user.username}</strong>${rankArrow}
             <small>${getRank(user.points)}</small>
           </div>
 
           <div class="leader-points">
-            ${user.points}
+            ${user.points.toLocaleString()}
             <span>pts</span>
           </div>
         </div>
       `;
     });
+
+    previousRanks = newRanks;
 
   } catch (error) {
     console.log("Leaderboard failed", error);
@@ -282,6 +315,7 @@ function getCountdown(closeTime) {
 }
 
 async function loadMatches() {
+  showSkeleton("matches", 3);
   try {
     const res = await fetch(`${API}/matches`);
     const data = await res.json();
@@ -380,15 +414,64 @@ if (match.result) {
     </p>
   `;
 
+} else if (userPrediction && now >= openTime && now <= closeTime) {
+
+  // Calculate 5-minute window
+  const betPlacedAt = new Date(userPrediction.created_at);
+  const cooldownEnd = new Date(betPlacedAt.getTime() + 5 * 60 * 1000);
+  const inCooldown = now < cooldownEnd;
+  const secondsLeft = Math.max(0, Math.floor((cooldownEnd - now) / 1000));
+  const cooldownMins = Math.floor(secondsLeft / 60);
+  const cooldownSecs = secondsLeft % 60;
+  const cooldownStr = inCooldown ? `${cooldownMins}:${String(cooldownSecs).padStart(2,'0')}` : null;
+
+  actionHtml = `
+  <div class="countdown-box">
+    <span>Predictions close in:</span>
+    <strong id="timer-${match.id}">${getCountdown(closeTime)}</strong>
+  </div>
+
+  <div class="prediction-box">
+    <div class="bet-status-bar">
+      <p>✅ Current bet: <strong>${userPrediction.selected_team}</strong> · <strong>${userPrediction.points_used.toLocaleString()} pts</strong></p>
+      ${inCooldown
+        ? `<p class="cooldown-notice">⏱ Cancel/reduce window: <strong id="cooldown-${match.id}">${cooldownStr}</strong></p>`
+        : `<p class="cooldown-notice cooldown-expired">🔒 Can only increase bet now</p>`
+      }
+      ${inCooldown
+        ? `<button class="cancel-btn" onclick="cancelBet(${match.id})">✕ Cancel Bet</button>`
+        : ''
+      }
+    </div>
+    <div class="bet-options">
+      <button class="bet-btn ${userPrediction.selected_team === match.team_a ? 'bet-btn-active' : ''}" onclick="selectBet(${match.id}, '${match.team_a}', ${match.odds_a || 2})">
+        <span class="bet-team">${match.team_a}</span>
+        <span class="bet-odds">${match.odds_a ? parseFloat(match.odds_a).toFixed(2) + 'x' : '2.00x'}</span>
+      </button>
+      <button class="bet-btn draw-btn ${userPrediction.selected_team === 'DRAW' ? 'bet-btn-active' : ''}" onclick="selectBet(${match.id}, 'DRAW', ${match.odds_draw || 1.5})">
+        <span class="bet-team">Draw</span>
+        <span class="bet-odds">${match.odds_draw ? parseFloat(match.odds_draw).toFixed(2) + 'x' : '1.50x'}</span>
+      </button>
+      <button class="bet-btn ${userPrediction.selected_team === match.team_b ? 'bet-btn-active' : ''}" onclick="selectBet(${match.id}, '${match.team_b}', ${match.odds_b || 2})">
+        <span class="bet-team">${match.team_b}</span>
+        <span class="bet-odds">${match.odds_b ? parseFloat(match.odds_b).toFixed(2) + 'x' : '2.00x'}</span>
+      </button>
+    </div>
+    <div id="bet-slip-${match.id}" class="bet-slip hidden">
+      <p class="bet-slip-preview" id="bet-preview-${match.id}"></p>
+      <input type="number" id="points-${match.id}" placeholder="Points to bet (multiples of 5)" min="5" step="5"
+        oninput="updateBetPreview(${match.id})" value="${userPrediction.points_used}">
+      <button class="confirm-btn" onclick="confirmBet(${match.id}, true)">Update Bet</button>
+    </div>
+  </div>
+  `;
+
 } else if (userPrediction) {
 
   actionHtml = `
     <p class="locked-text">
-      Already predicted: ${userPrediction.selected_team}
-      <br>
-      Points used: ${userPrediction.points_used}
-      <br>
-      Wait for the result.
+      ✅ Bet placed: <strong>${userPrediction.selected_team}</strong> · ${userPrediction.points_used.toLocaleString()} pts
+      <br><span style="font-size:0.8rem;opacity:0.7;">Waiting for result.</span>
     </p>
   `;
 
@@ -450,11 +533,16 @@ if (match.result) {
     timeZone: "Asia/Dubai"
   });
 
+  const msUntilOpen = openTime - now;
+  const hoursUntil = Math.floor(msUntilOpen / (1000 * 60 * 60));
+  const minsUntil = Math.floor((msUntilOpen % (1000 * 60 * 60)) / (1000 * 60));
+  const countdownStr = hoursUntil > 0 ? `${hoursUntil}h ${minsUntil}m` : `${minsUntil}m`;
+
   actionHtml = `
     <p class="locked-text">
-      Prediction opens: ${openDate} ${openClock} UAE
+      Betting opens in <strong>${countdownStr}</strong> (${openDate} ${openClock} UAE)
       <br>
-      Prediction will stop 5 minutes before match starts.
+      <span style="font-size:0.8rem;opacity:0.7;">Closes 5 min before kickoff</span>
     </p>
   `;
 
@@ -519,6 +607,7 @@ if (match.result) {
 }
 
 async function loadPredictionHistory() {
+  showSkeleton("predictionHistory", 3);
   const token = localStorage.getItem("token");
 
   try {
@@ -541,44 +630,54 @@ async function loadPredictionHistory() {
     data.forEach(item => {
       let statusColor = "#facc15";
       let resultText = item.result || "Pending";
+      let payoutText = "";
+      let payoutColor = "#facc15";
 
       if (item.result === "DRAW") {
         statusColor = "#22c55e";
         resultText = "Draw";
+        if (item.settled) {
+          const odds = item.odds_used || 1.5;
+          const payout = Math.floor(item.points_used * odds);
+          payoutText = `Won ${payout.toLocaleString()} pts (${odds}x odds)`;
+          payoutColor = "#22c55e";
+        }
       } else if (item.result && item.selected_team === item.result) {
         statusColor = "#22c55e";
+        if (item.settled) {
+          const odds = item.odds_used || 2;
+          const payout = Math.floor(item.points_used * odds);
+          payoutText = `Won ${payout.toLocaleString()} pts (${odds}x odds)`;
+          payoutColor = "#22c55e";
+        }
       } else if (item.result && item.selected_team !== item.result) {
         statusColor = "#ef4444";
+        if (item.settled) {
+          payoutText = `Lost ${item.points_used.toLocaleString()} pts`;
+          payoutColor = "#ef4444";
+        }
       }
+
+      const matchDate = new Date(item.match_time).toLocaleDateString("en-GB", {
+        day: "2-digit", month: "short", year: "numeric", timeZone: "Asia/Dubai"
+      });
 
       box.innerHTML += `
         <div class="match-item">
           <h4>${item.team_a} vs ${item.team_b}</h4>
 
           <p>
-            Stage:
-            ${item.stage}
-            ${item.group_name ? " - " + item.group_name : ""}
+            ${item.stage}${item.group_name ? " · " + item.group_name : ""} · ${matchDate}
           </p>
 
           <p>
-            Selected:
-            <strong>${item.selected_team}</strong>
+            Picked: <strong>${item.selected_team}</strong> · Staked: <strong>${item.points_used.toLocaleString()} pts</strong>
           </p>
 
-          <p>
-            Points Used:
-            ${item.points_used}
-          </p>
+          ${payoutText ? `<p style="color:${payoutColor}; font-weight:bold;">${payoutText}</p>` : ""}
 
           <p style="color:${statusColor}; font-weight:bold;">
-            Result:
-            ${resultText}
-          </p>
-
-          <p>
-            Status:
-            ${item.settled ? "Settled" : "Pending"}
+            ${item.settled ? resultText : "⏳ Pending result"}
           </p>
         </div>
       `;
@@ -951,7 +1050,7 @@ function updateBetPreview(matchId) {
   }
 }
 
-async function confirmBet(matchId) {
+async function confirmBet(matchId, isUpdate = false) {
   const token = localStorage.getItem("token");
   const bet = activeBet[matchId];
   if (!bet) { alert("Select a team first."); return; }
@@ -960,7 +1059,9 @@ async function confirmBet(matchId) {
   if (!pts || pts <= 0) { alert("Enter points to bet."); return; }
   if (pts % 5 !== 0) { alert("Points must be a multiple of 5."); return; }
 
-  const res = await fetch(`${API}/predict`, {
+  const endpoint = isUpdate ? `${API}/update-predict` : `${API}/predict`;
+
+  const res = await fetch(endpoint, {
     method: "POST",
     headers: { "Content-Type": "application/json", "Authorization": token },
     body: JSON.stringify({ matchId, selectedTeam: bet.pick, pointsUsed: pts, oddsUsed: bet.odds })
@@ -969,15 +1070,37 @@ async function confirmBet(matchId) {
   const data = await res.json();
   if (res.ok) {
     playPredictSound();
-    showNotification("Bet placed! " + bet.pick + " @ " + bet.odds + "x for " + pts + " pts");
+    const action = isUpdate ? "Bet updated!" : "Bet placed!";
+    showNotification(action + " " + bet.pick + " @ " + bet.odds + "x for " + pts.toLocaleString() + " pts");
     document.getElementById("bet-slip-" + matchId).classList.add("hidden");
     delete activeBet[matchId];
-    loadMatches();
+    await loadMatches();
     refreshUserData();
   } else {
     alert(data.message || "Bet failed.");
   }
 }
+
+async function cancelBet(matchId) {
+  const token = localStorage.getItem("token");
+  if (!confirm("Cancel your bet and get your points back?")) return;
+
+  const res = await fetch(`${API}/cancel-predict`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "Authorization": token },
+    body: JSON.stringify({ matchId })
+  });
+
+  const data = await res.json();
+  if (res.ok) {
+    showNotification("Bet cancelled — points refunded!");
+    await loadMatches();
+    refreshUserData();
+  } else {
+    alert(data.message || "Could not cancel bet.");
+  }
+}
+
 
 // ─── AUTO LOGIN ON PAGE LOAD ─────────────────────────────────────────────────
 

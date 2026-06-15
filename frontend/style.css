@@ -1720,3 +1720,138 @@ button:hover::after {
   font-weight: 700;
   width: 100%;
 }
+
+/* ─── LOADING SKELETONS ──────────────────────────────────────────────────── */
+.skeleton {
+  background: linear-gradient(90deg, rgba(255,214,0,0.05) 25%, rgba(255,214,0,0.12) 50%, rgba(255,214,0,0.05) 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.4s infinite;
+  border-radius: 8px;
+  height: 16px;
+  margin-bottom: 8px;
+}
+
+.skeleton-card {
+  background: rgba(18,16,0,0.82);
+  border: 1px solid rgba(255,214,0,0.15);
+  border-radius: 12px;
+  padding: 1rem;
+  margin-bottom: 12px;
+}
+
+.skeleton-title { width: 60%; height: 18px; }
+.skeleton-line { width: 80%; }
+.skeleton-line-short { width: 40%; }
+
+@keyframes shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+/* ─── MOBILE IMPROVEMENTS ────────────────────────────────────────────────── */
+@media (max-width: 480px) {
+  .bet-options {
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .bet-btn {
+    width: 100%;
+    flex-direction: row;
+    justify-content: space-between;
+    padding: 10px 14px;
+  }
+
+  .match-item h4 {
+    font-size: 1rem;
+  }
+
+  .leaderboard-item {
+    padding: 10px 12px;
+    gap: 8px;
+  }
+
+  .leader-points {
+    font-size: 1rem;
+  }
+
+  .modal-box {
+    max-height: 90vh;
+    margin: 0.5rem;
+  }
+
+  .user-history-summary {
+    gap: 0.4rem;
+  }
+
+  .user-history-summary span {
+    font-size: 0.78rem;
+    padding: 0.25rem 0.5rem;
+  }
+
+  input[type="number"],
+  input[type="text"],
+  input[type="password"] {
+    font-size: 16px; /* prevents iOS zoom on focus */
+  }
+
+  .countdown-box {
+    font-size: 0.85rem;
+  }
+
+  .dash-card {
+    padding: 1rem;
+  }
+}
+
+/* ─── ACTIVE BET BUTTON ──────────────────────────────────────────────────── */
+.bet-btn-active {
+  border-color: #ffd600 !important;
+  background: rgba(255, 214, 0, 0.18) !important;
+  box-shadow: 0 0 12px rgba(255, 214, 0, 0.35);
+}
+
+/* ─── BET STATUS BAR & COOLDOWN ─────────────────────────────────────────── */
+.bet-status-bar {
+  background: rgba(255, 214, 0, 0.06);
+  border: 1px solid rgba(255, 214, 0, 0.2);
+  border-radius: 10px;
+  padding: 0.75rem 1rem;
+  margin-bottom: 0.75rem;
+}
+
+.bet-status-bar p {
+  margin: 0.2rem 0;
+  font-size: 0.88rem;
+  color: #ccc;
+}
+
+.bet-status-bar strong {
+  color: #ffd600;
+}
+
+.cooldown-notice {
+  font-size: 0.82rem !important;
+  color: #22c55e !important;
+}
+
+.cooldown-expired {
+  color: #f97316 !important;
+}
+
+.cancel-btn {
+  margin-top: 0.5rem;
+  background: rgba(239, 68, 68, 0.15);
+  border: 1px solid rgba(239, 68, 68, 0.4);
+  color: #ef4444;
+  border-radius: 8px;
+  padding: 6px 14px;
+  font-size: 0.82rem;
+  cursor: pointer;
+  width: auto;
+  display: inline-block;
+}
+
+.cancel-btn:hover {
+  background: rgba(239, 68, 68, 0.25);
+}
