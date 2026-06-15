@@ -19,6 +19,12 @@ let lastKnownPoints = null;
 let lastKnownRank = null;
 let refreshInterval = null;
 
+function showPending() {
+  document.getElementById("loginPage").classList.add("hidden");
+  document.getElementById("registerPage").classList.add("hidden");
+  document.getElementById("pendingPage").classList.remove("hidden");
+}
+
 function showLogin() {
   document.getElementById("loginPage").classList.remove("hidden");
   document.getElementById("registerPage").classList.add("hidden");
@@ -159,13 +165,11 @@ async function register() {
     const data = await res.json();
 
     if (res.ok) {
-      showNotification("Account created successfully. Please login now.");
-
       document.getElementById("registerUsername").value = "";
       document.getElementById("registerPassword").value = "";
       document.getElementById("registerFullName").value = "";
 
-      showLogin();
+      showPending();
     } else {
       alert(data.message || "Registration failed.");
     }
@@ -935,6 +939,7 @@ function hideAllDashboardSections() {
   document.getElementById("leaderboardSection").classList.add("hidden");
   document.getElementById("matchesSection").classList.add("hidden");
   document.getElementById("historySection").classList.add("hidden");
+  document.getElementById("activeBetsSection") && document.getElementById("activeBetsSection").classList.add("hidden");
   document.getElementById("statsSection").classList.add("hidden");
 }
 
@@ -1147,6 +1152,87 @@ async function cancelBet(matchId) {
     await Promise.all([loadMatches(), loadLeaderboard()]);
   } else {
     alert(data.message || "Could not cancel bet.");
+  }
+}
+
+
+async function showActiveBetsSection() {
+  hideAllDashboardSections();
+  document.getElementById("activeBetsSection").classList.remove("hidden");
+  await loadActiveBets();
+}
+
+async function loadActiveBets() {
+  const token = localStorage.getItem("token");
+  showSkeleton("activeBetsList", 3);
+
+  try {
+    const res = await fetch(`${API}/active-bets`, {
+      headers: { "Authorization": token }
+    });
+    const data = await res.json();
+    const box = document.getElementById("activeBetsList");
+
+    if (!data || data.length === 0) {
+      box.innerHTML = "<p>No active bets at the moment.</p>";
+      return;
+    }
+
+    // Group by match
+    const grouped = {};
+    data.forEach(b => {
+      const key = b.team_a + " vs " + b.team_b;
+      if (!grouped[key]) grouped[key] = {
+        team_a: b.team_a,
+        team_b: b.team_b,
+        match_time: b.match_time,
+        stage: b.stage,
+        group_name: b.group_name,
+        bets: []
+      };
+      grouped[key].bets.push(b);
+    });
+
+    box.innerHTML = Object.values(grouped).map(g => {
+      const matchDate = new Date(g.match_time).toLocaleDateString("en-GB", {
+        day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit",
+        timeZone: "Asia/Dubai", hour12: false
+      });
+      const totalStake = g.bets.reduce((s, b) => s + b.points_used, 0);
+
+      const rows = g.bets.map(b => {
+        const odds = b.odds_used ? parseFloat(b.odds_used).toFixed(2) + "x" : "—";
+        const potWin = b.odds_used ? Math.floor(b.points_used * b.odds_used).toLocaleString() : "—";
+        return `<tr>
+          <td><strong>${b.username}</strong></td>
+          <td>${b.selected_team}</td>
+          <td>${b.points_used.toLocaleString()}</td>
+          <td>${odds}</td>
+          <td>${potWin}</td>
+        </tr>`;
+      }).join("");
+
+      return `
+        <div class="match-item">
+          <h4>${g.team_a} vs ${g.team_b}</h4>
+          <p>${g.stage}${g.group_name ? " · " + g.group_name : ""} · ${matchDate} UAE</p>
+          <p style="color:#ffd600;font-size:0.85rem;">Total staked: ${totalStake.toLocaleString()} pts · ${g.bets.length} bets</p>
+          <table style="width:100%;border-collapse:collapse;margin-top:8px;font-size:0.82rem;">
+            <tr style="color:#ffd600;border-bottom:1px solid rgba(255,214,0,0.2);">
+              <th style="padding:4px 0;text-align:left;">Player</th>
+              <th style="text-align:left;">Pick</th>
+              <th style="text-align:right;">Stake</th>
+              <th style="text-align:right;">Odds</th>
+              <th style="text-align:right;">To Win</th>
+            </tr>
+            ${rows}
+          </table>
+        </div>
+      `;
+    }).join("");
+
+  } catch (err) {
+    document.getElementById("activeBetsList").innerHTML = "<p>Could not load bets.</p>";
   }
 }
 

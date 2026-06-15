@@ -399,3 +399,47 @@ async function importUsers() {
     resultEl.innerText = data.message || "Import failed.";
   }
 }
+
+
+async function loadPendingUsers() {
+  const token = localStorage.getItem("token");
+  const res = await fetch(`${API}/admin/users`, {
+    headers: { "Authorization": token }
+  });
+  const users = await res.json();
+  const pending = users.filter(u => u.is_active === 0 && u.is_admin !== 1);
+  const box = document.getElementById("pendingUsers");
+
+  if (!pending || pending.length === 0) {
+    box.innerHTML = "<p>No pending accounts.</p>";
+    return;
+  }
+
+  box.innerHTML = pending.map(u => `
+    <div class="match-item" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;">
+      <div>
+        <strong>${u.username}</strong>
+        <p style="margin:2px 0;font-size:0.85rem;color:#aaa;">${u.full_name || '—'}</p>
+      </div>
+      <button onclick="approveUser(${u.id})" style="background:rgba(34,197,94,0.15);border:1px solid rgba(34,197,94,0.4);color:#22c55e;padding:6px 16px;border-radius:8px;cursor:pointer;">
+        ✓ Approve
+      </button>
+    </div>
+  `).join('');
+}
+
+async function approveUser(userId) {
+  const token = localStorage.getItem("token");
+  const res = await fetch(`${API}/admin/toggle-user`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "Authorization": token },
+    body: JSON.stringify({ userId })
+  });
+  const data = await res.json();
+  alert(data.message);
+  loadPendingUsers();
+  loadAdminUsers();
+}
+
+// Load pending users on page load
+loadPendingUsers();

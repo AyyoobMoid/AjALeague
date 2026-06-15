@@ -36,6 +36,21 @@
 
 
 
+
+    <!-- PENDING APPROVAL PAGE -->
+    <section id="pendingPage" class="page hidden">
+      <div class="auth-card">
+        <div style="text-align:center;padding:2rem 0;">
+          <div style="font-size:3rem;margin-bottom:1rem;">⏳</div>
+          <h2 style="color:#ffd600;margin-bottom:1rem;">Account Pending Approval</h2>
+          <p style="color:#ccc;margin-bottom:1rem;">Your account has been created and is waiting for admin approval.</p>
+          <p style="color:#aaa;font-size:0.9rem;margin-bottom:1.5rem;">Please contact us to get activated:</p>
+          <p style="color:#ffd600;font-size:1.1rem;font-weight:bold;margin-bottom:2rem;">+966 50 347 5147</p>
+          <button onclick="showLogin()">Back to Login</button>
+        </div>
+      </div>
+    </section>
+
     <!-- LOGIN PAGE -->
     <section id="loginPage" class="page">
 <div class="auth-card">
@@ -61,7 +76,7 @@
 <p class="forgot-password-note">
 🔒 Password recovery is currently unavailable. Please keep your password safe. If you forget it, you will need to create a new account.
 <br><br>
-📧 Questions? Contact the AJA League Administrator at ayyoobmoid@gmail.com.
+📞 Questions? Contact +966 50 347 5147
 </p>
       </div>
     </section>
@@ -213,6 +228,7 @@
         <button onclick="showLeaderboardSection()">🏅 Leaderboard</button>
         <button onclick="showMatchesSection()">⚽ Matches</button>
         <button onclick="showHistorySection()">📜 History</button>
+        <button onclick="showActiveBetsSection()">🔥 Live Bets</button>
         <button onclick="showStatsSection()">📊 Stats</button>
       </div>
     </div>
@@ -228,6 +244,12 @@
     <h3>Matches</h3>
     <p class="small-text">Click a date to view matches for that day.</p>
     <div id="matches"></div>
+  </div>
+
+  <div class="dash-card full hidden" id="activeBetsSection">
+    <h3>🔥 Live Bets</h3>
+    <p class="small-text">All unsettled bets currently placed by players.</p>
+    <div id="activeBetsList"></div>
   </div>
 
   <div class="dash-card full hidden" id="historySection">
