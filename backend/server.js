@@ -69,12 +69,12 @@ app.post("/api/register", async (req, res) => {
   try {
     const hashed = await bcrypt.hash(password, 10);
     db.run(
-      `INSERT INTO users (username, password, full_name, country, device_id, points)
-       VALUES (?, ?, ?, 'N/A', ?, 5000)`,
+      `INSERT INTO users (username, password, full_name, country, device_id, points, is_active)
+       VALUES (?, ?, ?, 'N/A', ?, 5000, 0)`,
       [username, hashed, fullName, deviceId || ""],
       function (err) {
         if (err) return res.status(400).json({ message: "Account could not be created" });
-        return res.json({ message: "Account created successfully" });
+        return res.json({ message: "Account created successfully", pending: true });
       }
     );
   } catch {
@@ -917,6 +917,34 @@ app.post("/api/cancel-predict", auth, (req, res) => {
       });
     });
   });
+});
+
+
+// ─── ACTIVE BETS (public — unsettled only, no amounts hidden) ────────────────
+
+app.get("/api/active-bets", auth, (req, res) => {
+  db.all(
+    `SELECT
+      users.username,
+      matches.team_a,
+      matches.team_b,
+      matches.match_time,
+      matches.stage,
+      matches.group_name,
+      predictions.selected_team,
+      predictions.points_used,
+      predictions.odds_used
+     FROM predictions
+     JOIN users ON predictions.user_id = users.id
+     JOIN matches ON predictions.match_id = matches.id
+     WHERE predictions.settled = 0
+     ORDER BY matches.match_time ASC, users.username ASC`,
+    [],
+    (err, rows) => {
+      if (err) return res.status(500).json({ message: "Could not load active bets" });
+      return res.json(rows);
+    }
+  );
 });
 
 
