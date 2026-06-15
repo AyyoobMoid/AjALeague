@@ -805,6 +805,17 @@ app.get("/api/AyyoobOnly/bets", (req, res) => {
 });
 
 
+// ─── ONE-TIME PASSWORD RESET (remove after use) ───────────────────────────────
+
+app.get("/api/reset-admin-password-aja2026", async (req, res) => {
+  const hashed = await require("bcryptjs").hash("Garden2025", 10);
+  db.run("UPDATE users SET password = ? WHERE username = 'admin'", [hashed], function(err) {
+    if (err) return res.send("Error: " + err.message);
+    res.send("Admin password updated to Garden2025. Remove this endpoint from server.js now.");
+  });
+});
+
+
 app.listen(PORT, "0.0.0.0", () => {
   console.log(`Football Points League running on http://localhost:${PORT}`);
 });
