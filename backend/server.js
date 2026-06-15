@@ -115,7 +115,7 @@ app.get("/api/me", auth, (req, res) => {
 
 app.get("/api/leaderboard", (req, res) => {
   db.all(
-    "SELECT full_name, username, points FROM users WHERE is_active = 1 ORDER BY points DESC",
+    "SELECT full_name, username, points FROM users WHERE is_active = 1 AND is_admin = 0 ORDER BY points DESC",
     [],
     (err, rows) => {
       if (err) return res.status(500).json({ message: "Could not load leaderboard" });
