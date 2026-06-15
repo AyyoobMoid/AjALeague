@@ -434,12 +434,14 @@ if (match.result) {
   <div class="prediction-box">
     <div class="bet-status-bar">
       <p>✅ Current bet: <strong>${userPrediction.selected_team}</strong> · <strong>${userPrediction.points_used.toLocaleString()} pts</strong></p>
+      <p class="cooldown-notice" id="cooldown-label-${match.id}">
+        ${inCooldown
+          ? `⏱ Cancel/reduce window: <strong id="cooldown-${match.id}">${cooldownStr}</strong>`
+          : `🔒 Can only increase bet now`
+        }
+      </p>
       ${inCooldown
-        ? `<p class="cooldown-notice">⏱ Cancel/reduce window: <strong id="cooldown-${match.id}">${cooldownStr}</strong></p>`
-        : `<p class="cooldown-notice cooldown-expired">🔒 Can only increase bet now</p>`
-      }
-      ${inCooldown
-        ? `<button class="cancel-btn" onclick="cancelBet(${match.id})">✕ Cancel Bet</button>`
+        ? `<button class="cancel-btn" id="cancel-btn-${match.id}" onclick="cancelBet(${match.id})">✕ Cancel Bet</button>`
         : ''
       }
     </div>
@@ -582,17 +584,32 @@ if (match.result) {
           </div>
         `;
         setInterval(() => {
-
-  const timerElement =
-    document.getElementById(`timer-${match.id}`);
-
+  const timerElement = document.getElementById(`timer-${match.id}`);
   if (timerElement) {
-
-    timerElement.innerHTML =
-      getCountdown(closeTime);
-
+    timerElement.innerHTML = getCountdown(closeTime);
   }
 
+  // Update cooldown timer if exists
+  const cooldownEl = document.getElementById(`cooldown-${match.id}`);
+  const cooldownLabel = document.getElementById(`cooldown-label-${match.id}`);
+  if (cooldownEl && cooldownLabel) {
+    const betPlaced = userPrediction ? new Date(userPrediction.created_at) : null;
+    if (betPlaced) {
+      const coolEnd = new Date(betPlaced.getTime() + 5 * 60 * 1000);
+      const secsLeft = Math.max(0, Math.floor((coolEnd - new Date()) / 1000));
+      if (secsLeft > 0) {
+        const m = Math.floor(secsLeft / 60);
+        const s = secsLeft % 60;
+        cooldownEl.innerHTML = `${m}:${String(s).padStart(2,'0')}`;
+      } else {
+        // Window expired — update label and hide cancel button
+        cooldownLabel.innerHTML = '🔒 Can only increase bet now';
+        cooldownLabel.className = 'cooldown-notice cooldown-expired';
+        const cancelBtn = document.getElementById(`cancel-btn-${match.id}`);
+        if (cancelBtn) cancelBtn.style.display = 'none';
+      }
+    }
+  }
 }, 1000);
       });
 
@@ -1090,10 +1107,22 @@ async function confirmBet(matchId, isUpdate = false) {
     playPredictSound();
     const action = isUpdate ? "Bet updated!" : "Bet placed!";
     showNotification(action + " " + bet.pick + " @ " + bet.odds + "x for " + pts.toLocaleString() + " pts");
-    document.getElementById("bet-slip-" + matchId).classList.add("hidden");
+
+    // Clear bet slip state
+    const slip = document.getElementById("bet-slip-" + matchId);
+    if (slip) slip.classList.add("hidden");
+    const input = document.getElementById("points-" + matchId);
+    if (input) input.value = "";
     delete activeBet[matchId];
-    await loadMatches();
-    refreshUserData();
+
+    // Suppress the notification from refreshUserData since we already showed one
+    const savedPoints = lastKnownPoints;
+    await refreshUserData();
+    lastKnownPoints = savedPoints; // prevent double notification
+
+    // Run matches and leaderboard in parallel
+    await Promise.all([loadMatches(), loadLeaderboard()]);
+
   } else {
     alert(data.message || "Bet failed.");
   }
@@ -1111,9 +1140,11 @@ async function cancelBet(matchId) {
 
   const data = await res.json();
   if (res.ok) {
+    const savedPoints = lastKnownPoints;
+    await refreshUserData();
+    lastKnownPoints = savedPoints;
     showNotification("Bet cancelled — points refunded!");
-    await loadMatches();
-    refreshUserData();
+    await Promise.all([loadMatches(), loadLeaderboard()]);
   } else {
     alert(data.message || "Could not cancel bet.");
   }
