@@ -258,18 +258,24 @@ app.get("/api/my-stats", auth, (req, res) => {
     (err, rows) => {
       if (err) return res.status(500).json({ message: "Could not load stats" });
 
-      let totalPredictions = rows.length, wins = 0, losses = 0, draws = 0, pending = 0, totalPointsUsed = 0;
+      let totalPredictions = rows.length, correct = 0, losses = 0, draws = 0, pending = 0, totalPointsUsed = 0;
 
       rows.forEach((item) => {
         totalPointsUsed += item.points_used;
         if (!item.result || !item.settled) pending++;
-        else if (item.result === "DRAW") { draws++; wins++; } // draws pay everyone
-        else if (item.selected_team === item.result) wins++;
+        else if (item.result === "DRAW" && item.selected_team === "DRAW") {
+          draws++;   // correctly called a draw
+          correct++;
+        }
+        else if (item.result !== "DRAW" && item.selected_team === item.result) {
+          correct++; // correctly called the winner
+        }
         else losses++;
       });
 
-      const successRate = (wins + losses) > 0 ? Math.round((wins / (wins + losses)) * 100) : 0;
-      res.json({ totalPredictions, wins, losses, draws, pending, totalPointsUsed, successRate });
+      const settled = correct + losses;
+      const successRate = settled > 0 ? Math.round((correct / settled) * 100) : 0;
+      res.json({ totalPredictions, correct, wins: correct, losses, draws, pending, totalPointsUsed, successRate });
     }
   );
 });
