@@ -950,6 +950,43 @@ app.get("/api/active-bets", auth, (req, res) => {
 });
 
 
+// ─── HOUSE TOTAL ──────────────────────────────────────────────────────────────
+
+app.get("/api/house-total", (req, res) => {
+  db.all(
+    `SELECT predictions.points_used, predictions.odds_used, predictions.settled,
+            predictions.selected_team, matches.result, matches.odds_a, matches.odds_b,
+            matches.odds_draw, matches.team_a
+     FROM predictions
+     JOIN matches ON predictions.match_id = matches.id
+     WHERE predictions.settled = 1`,
+    [],
+    (err, rows) => {
+      if (err) return res.status(500).json({ message: "Could not load house total" });
+
+      let houseTotal = 0;
+      rows.forEach(p => {
+        const staked = p.points_used;
+        const isDraw = p.result === "DRAW";
+        const isWin = !isDraw && p.selected_team === p.result;
+        const isPaid = isDraw || isWin;
+
+        let odds = parseFloat(p.odds_used);
+        if (!odds) {
+          if (isDraw) odds = parseFloat(p.odds_draw);
+          else if (isWin) odds = p.selected_team === p.team_a ? parseFloat(p.odds_a) : parseFloat(p.odds_b);
+        }
+
+        const payout = isPaid && odds ? Math.floor(staked * odds) : 0;
+        houseTotal += staked - payout; // house keeps stake minus payout
+      });
+
+      res.json({ houseTotal });
+    }
+  );
+});
+
+
 app.listen(PORT, "0.0.0.0", () => {
   console.log(`Football Points League running on http://localhost:${PORT}`);
 });
