@@ -921,11 +921,6 @@ document.getElementById("quickSuccessRate").innerText = `${data.successRate}%`;
       </div>
 
       <div class="dash-card">
-        <h3>Draws Correctly Called</h3>
-        <p>${data.draws}</p>
-      </div>
-
-      <div class="dash-card">
         <h3>Pending</h3>
         <p>${data.pending}</p>
       </div>
@@ -1009,19 +1004,22 @@ async function showUserHistory(username) {
     // Stats summary
     let wins = 0, losses = 0, draws = 0;
     history.forEach(h => {
-      if (h.result === "DRAW") draws++;
-      else if (h.selected_team === h.result) wins++;
-      else losses++;
+      if (h.selected_team === h.result) {
+        wins++;
+        if (h.result === "DRAW") draws++;
+      } else {
+        losses++;
+      }
     });
-    const settled = wins + losses + draws;
+    const settled = wins + losses;
     const rate = settled > 0 ? Math.round((wins / settled) * 100) : 0;
 
     statBox.innerHTML = `
       <div class="user-history-summary">
-        <span>🏆 ${wins} wins</span>
-        <span>❌ ${losses} losses</span>
-        <span>🤝 ${draws} draws</span>
-        <span>🎯 ${rate}% success</span>
+        <span>✅ ${wins} correct</span>
+        <span>❌ ${losses} wrong</span>
+        <span>🤝 ${draws} draws called</span>
+        <span>🎯 ${rate}% accuracy</span>
         <span>💰 ${user.points} pts</span>
       </div>
     `;
@@ -1032,10 +1030,19 @@ async function showUserHistory(username) {
     }
 
     listBox.innerHTML = history.map(item => {
+      const isCorrect = item.selected_team === item.result;
+      const isDraw = item.result === "DRAW";
       let color = "#ef4444";
-      let label = "Lost";
-      if (item.result === "DRAW") { color = "#22c55e"; label = "Draw ✓"; }
-      else if (item.selected_team === item.result) { color = "#22c55e"; label = "Won ✓"; }
+      let label = "❌ Wrong";
+
+      if (isCorrect) {
+        color = "#22c55e";
+        label = isDraw ? "✅ Correct (Draw)" : "✅ Correct";
+      }
+
+      const odds = item.odds_used ? parseFloat(item.odds_used) : null;
+      const payout = isCorrect && odds ? Math.floor(item.points_used * odds) : 0;
+      const profit = payout - item.points_used;
 
       const matchDate = new Date(item.match_time).toLocaleDateString("en-GB", {
         day: "2-digit", month: "short", year: "numeric", timeZone: "Asia/Dubai"
@@ -1044,10 +1051,14 @@ async function showUserHistory(username) {
       return `
         <div class="match-item">
           <h4>${item.team_a} vs ${item.team_b}</h4>
-          <p>Stage: ${item.stage}${item.group_name ? " - " + item.group_name : ""}</p>
-          <p>Date: ${matchDate}</p>
-          <p>Picked: <strong>${item.selected_team}</strong> · ${item.points_used} pts</p>
-          <p style="color:${color}; font-weight:bold;">${label} (Result: ${item.result})</p>
+          <p style="font-size:0.82rem;color:#aaa;">${item.stage}${item.group_name ? " · " + item.group_name : ""} · ${matchDate}</p>
+          <p>Pick: <strong>${item.selected_team}</strong> · ${item.points_used.toLocaleString()} pts${odds ? ` @ ${odds.toFixed(2)}x` : ""}</p>
+          <p style="color:#aaa;font-size:0.82rem;">Result: ${item.result}</p>
+          ${isCorrect
+            ? `<p style="color:#22c55e;font-weight:bold;">Won ${payout.toLocaleString()} pts (+${profit.toLocaleString()} profit)</p>`
+            : `<p style="color:#ef4444;font-weight:bold;">Lost ${item.points_used.toLocaleString()} pts</p>`
+          }
+          <p style="color:${color};font-weight:bold;">${label}</p>
         </div>
       `;
     }).join("");
