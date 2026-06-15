@@ -321,7 +321,8 @@ function getCountdown(closeTime) {
 async function loadMatches() {
   showSkeleton("matches", 3);
   try {
-    const res = await fetch(`${API}/matches`);
+    const cacheBust = arguments[0] === true ? `?t=${Date.now()}` : '';
+    const res = await fetch(`${API}/matches${cacheBust}`);
     const data = await res.json();
 
     const token = localStorage.getItem("token");
@@ -817,8 +818,7 @@ async function submitPrediction(matchId, selectedTeam) {
       input.value = "";
 
       await refreshUserData();
-      await loadLeaderboard();
-      await loadMatches();
+      await Promise.all([loadMatches(true), loadLeaderboard()]);
 
       const historySection = document.getElementById("historySection");
       if (historySection && !historySection.classList.contains("hidden")) {
@@ -838,8 +838,7 @@ async function submitPrediction(matchId, selectedTeam) {
   try {
 
     await refreshUserData();
-    await loadLeaderboard();
-    await loadMatches();
+    await Promise.all([loadMatches(true), loadLeaderboard()]);
 
   } catch (refreshError) {
 
@@ -1126,7 +1125,7 @@ async function confirmBet(matchId, isUpdate = false) {
     lastKnownPoints = savedPoints; // prevent double notification
 
     // Run matches and leaderboard in parallel
-    await Promise.all([loadMatches(), loadLeaderboard()]);
+    await Promise.all([loadMatches(true), loadLeaderboard()]);
 
   } else {
     alert(data.message || "Bet failed.");
@@ -1149,7 +1148,7 @@ async function cancelBet(matchId) {
     await refreshUserData();
     lastKnownPoints = savedPoints;
     showNotification("Bet cancelled — points refunded!");
-    await Promise.all([loadMatches(), loadLeaderboard()]);
+    await Promise.all([loadMatches(true), loadLeaderboard()]);
   } else {
     alert(data.message || "Could not cancel bet.");
   }
