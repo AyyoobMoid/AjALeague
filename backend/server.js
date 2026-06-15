@@ -262,15 +262,14 @@ app.get("/api/my-stats", auth, (req, res) => {
 
       rows.forEach((item) => {
         totalPointsUsed += item.points_used;
-        if (!item.result || !item.settled) pending++;
-        else if (item.result === "DRAW" && item.selected_team === "DRAW") {
-          draws++;   // correctly called a draw
+        if (!item.settled || !item.result) {
+          pending++;
+        } else if (item.selected_team === item.result) {
           correct++;
+          if (item.result === "DRAW") draws++;
+        } else {
+          losses++;
         }
-        else if (item.result !== "DRAW" && item.selected_team === item.result) {
-          correct++; // correctly called the winner
-        }
-        else losses++;
       });
 
       const settled = correct + losses;
@@ -310,9 +309,8 @@ function settleMatch(matchId, result, callback) {
           predictions.forEach((prediction) => {
             let reward = 0;
             const isWin = prediction.selected_team === result;
-            // Payout always uses locked-in odds_used, never hardcoded multipliers
-            const isPaid = result === "DRAW" || isWin; // draws pay everyone
-            if (isPaid) {
+            // Only pay if pick exactly matches result (DRAW must be picked as DRAW)
+            if (prediction.selected_team === result) {
               let odds;
               if (prediction.odds_used) {
                 odds = parseFloat(prediction.odds_used);
@@ -324,7 +322,6 @@ function settleMatch(matchId, result, callback) {
               if (odds) {
                 reward = Math.floor(prediction.points_used * odds);
               }
-              // If no odds available at all, no payout (shouldn't happen)
             }
 
             db.run("UPDATE users SET points = points + ? WHERE id = ?", [reward, prediction.user_id], () => {
