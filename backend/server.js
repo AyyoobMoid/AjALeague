@@ -114,6 +114,7 @@ app.get("/api/me", auth, (req, res) => {
 // ─── LEADERBOARD ─────────────────────────────────────────────────────────────
 
 app.get("/api/leaderboard", (req, res) => {
+  res.set("Cache-Control", "public, max-age=30");
   db.all(
     "SELECT full_name, username, points FROM users WHERE is_active = 1 AND is_admin = 0 ORDER BY points DESC",
     [],
@@ -127,6 +128,7 @@ app.get("/api/leaderboard", (req, res) => {
 // ─── MATCHES ─────────────────────────────────────────────────────────────────
 
 app.get("/api/matches", (req, res) => {
+  res.set("Cache-Control", "public, max-age=60");
   db.all("SELECT * FROM matches WHERE status != 'settled' ORDER BY match_time ASC", [], (err, rows) => {
     if (err) return res.status(500).json({ message: "Could not load matches" });
     return res.json(rows);
