@@ -441,5 +441,9 @@ async function approveUser(userId) {
   loadAdminUsers();
 }
 
-// Load pending users on page load
-loadPendingUsers();
+// Load pending users once DOM is ready
+if (document.readyState === "loading") {
+  document.addEventListener("DOMContentLoaded", loadPendingUsers);
+} else {
+  loadPendingUsers();
+}

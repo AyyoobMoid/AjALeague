@@ -29,6 +29,8 @@ function showLogin() {
   document.getElementById("loginPage").classList.remove("hidden");
   document.getElementById("registerPage").classList.add("hidden");
   document.getElementById("dashboardPage").classList.add("hidden");
+  const pending = document.getElementById("pendingPage");
+  if (pending) pending.classList.add("hidden");
 }
 
 function showRegister() {
@@ -102,14 +104,30 @@ function showHistorySection() {
   section.scrollIntoView({ behavior: "smooth" });
 }
 
+let leaderboardPoints = []; // populated when leaderboard loads
+
 function getRank(points) {
   points = Number(points);
+  if (!leaderboardPoints.length) {
+    // Fallback to points-based if no leaderboard data yet
+    if (points >= 50000) return "Legend 👑";
+    if (points >= 20000) return "Elite ⭐";
+    if (points >= 10000) return "Pro 🔵";
+    if (points >= 5000) return "Contender 🟢";
+    if (points >= 2000) return "Amateur 🟡";
+    return "Rookie ⚪";
+  }
 
-  if (points >= 50000) return "Legend 👑";
-  if (points >= 20000) return "Champion 🟣";
-  if (points >= 10000) return "Elite 🔵";
-  if (points >= 5000) return "Semi Pro 🟢";
+  const total = leaderboardPoints.length;
+  // Find how many players this person beats (rank from bottom)
+  const beatenBy = leaderboardPoints.filter(p => p > points).length;
+  const percentile = (beatenBy / total) * 100; // % of players above you
 
+  if (percentile < 5)   return "Legend 👑";
+  if (percentile < 15)  return "Elite ⭐";
+  if (percentile < 30)  return "Pro 🔵";
+  if (percentile < 50)  return "Contender 🟢";
+  if (percentile < 75)  return "Amateur 🟡";
   return "Rookie ⚪";
 }
 
@@ -265,6 +283,9 @@ async function loadLeaderboard() {
         </div>
       </div>
     `;
+
+    // Update percentile rank data
+    leaderboardPoints = data.map(u => u.points).sort((a, b) => b - a);
 
     const newRanks = {};
     data.forEach((user, index) => { newRanks[user.username] = index + 1; });
@@ -892,7 +913,7 @@ async function loadProfileStats() {
   const data = await res.json();
 
   document.getElementById("quickTotalPredictions").innerText = data.totalPredictions;
-document.getElementById("quickWins").innerText = data.wins;
+document.getElementById("quickWins").innerText = data.correct !== undefined ? data.correct : data.wins;
 document.getElementById("quickSuccessRate").innerText = `${data.successRate}%`;
 
   const box = document.getElementById("profileStats");
@@ -905,18 +926,18 @@ document.getElementById("quickSuccessRate").innerText = `${data.successRate}%`;
       </div>
 
       <div class="dash-card">
-        <h3>Wins (incl. draws)</h3>
-        <p>${data.wins}</p>
+        <h3>Correct Predictions</h3>
+        <p>${data.correct}</p>
       </div>
 
       <div class="dash-card">
-        <h3>Losses</h3>
+        <h3>Wrong Predictions</h3>
         <p>${data.losses}</p>
       </div>
 
       <div class="dash-card">
-        <h3>Draw Results</h3>
-        <p>${data.draws} <span style="font-size:0.75rem;color:#aaa;">(paid 1.5x)</span></p>
+        <h3>Draws Correctly Called</h3>
+        <p>${data.draws}</p>
       </div>
 
       <div class="dash-card">
@@ -925,7 +946,7 @@ document.getElementById("quickSuccessRate").innerText = `${data.successRate}%`;
       </div>
 
       <div class="dash-card">
-        <h3>Success Rate</h3>
+        <h3>Accuracy</h3>
         <p>${data.successRate}%</p>
       </div>
 
