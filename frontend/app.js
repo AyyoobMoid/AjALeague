@@ -696,57 +696,42 @@ async function loadPredictionHistory() {
     }
 
     data.forEach(item => {
-      let statusColor = "#facc15";
-      let resultText = item.result || "Pending";
-      let payoutText = "";
-      let payoutColor = "#facc15";
-
-      if (item.result === "DRAW") {
-        statusColor = "#22c55e";
-        resultText = "Draw";
-        if (item.settled) {
-          const odds = item.odds_used || 1.5;
-          const payout = Math.floor(item.points_used * odds);
-          payoutText = `Won ${payout.toLocaleString()} pts (${odds}x odds)`;
-          payoutColor = "#22c55e";
-        }
-      } else if (item.result && item.selected_team === item.result) {
-        statusColor = "#22c55e";
-        if (item.settled) {
-          const odds = item.odds_used || 2;
-          const payout = Math.floor(item.points_used * odds);
-          payoutText = `Won ${payout.toLocaleString()} pts (${odds}x odds)`;
-          payoutColor = "#22c55e";
-        }
-      } else if (item.result && item.selected_team !== item.result) {
-        statusColor = "#ef4444";
-        if (item.settled) {
-          payoutText = `Lost ${item.points_used.toLocaleString()} pts`;
-          payoutColor = "#ef4444";
-        }
-      }
-
       const matchDate = new Date(item.match_time).toLocaleDateString("en-GB", {
         day: "2-digit", month: "short", year: "numeric", timeZone: "Asia/Dubai"
       });
 
+      const isCorrect = item.settled && item.result && item.selected_team === item.result;
+      const isWrong = item.settled && item.result && item.selected_team !== item.result;
+      const isPending = !item.settled || !item.result;
+
+      const odds = item.odds_used ? parseFloat(item.odds_used) : null;
+      const payout = isCorrect && odds ? Math.floor(item.points_used * odds) : 0;
+      const profit = payout - item.points_used;
+
+      let statusColor = "#facc15";
+      let statusText = "⏳ Pending";
+      let payoutLine = "";
+
+      if (isCorrect) {
+        statusColor = "#22c55e";
+        statusText = "✅ Correct";
+        const oddsStr = odds ? ` @ ${odds.toFixed(2)}x` : "";
+        payoutLine = `<p style="color:#22c55e;font-weight:bold;">Won ${payout.toLocaleString()} pts (+${profit.toLocaleString()} profit${oddsStr})</p>`;
+      } else if (isWrong) {
+        statusColor = "#ef4444";
+        statusText = "❌ Wrong";
+        const oddsStr = odds ? ` @ ${odds.toFixed(2)}x` : "";
+        payoutLine = `<p style="color:#ef4444;font-weight:bold;">Lost ${item.points_used.toLocaleString()} pts${oddsStr}</p>`;
+      }
+
       box.innerHTML += `
         <div class="match-item">
           <h4>${item.team_a} vs ${item.team_b}</h4>
-
-          <p>
-            ${item.stage}${item.group_name ? " · " + item.group_name : ""} · ${matchDate}
-          </p>
-
-          <p>
-            Picked: <strong>${item.selected_team}</strong> · Staked: <strong>${item.points_used.toLocaleString()} pts</strong>
-          </p>
-
-          ${payoutText ? `<p style="color:${payoutColor}; font-weight:bold;">${payoutText}</p>` : ""}
-
-          <p style="color:${statusColor}; font-weight:bold;">
-            ${item.settled ? resultText : "⏳ Pending result"}
-          </p>
+          <p style="font-size:0.82rem;color:#aaa;">${item.stage}${item.group_name ? " · " + item.group_name : ""} · ${matchDate}</p>
+          <p>Pick: <strong>${item.selected_team}</strong> · Staked: <strong>${item.points_used.toLocaleString()} pts</strong>${odds ? ` · Odds: <strong>${odds.toFixed(2)}x</strong>` : ""}</p>
+          ${item.result ? `<p style="color:#aaa;font-size:0.82rem;">Result: ${item.result}</p>` : ""}
+          ${payoutLine}
+          <p style="color:${statusColor};font-weight:bold;">${statusText}</p>
         </div>
       `;
     });
