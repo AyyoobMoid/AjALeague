@@ -10,7 +10,7 @@ const db = require("./database");
 const app = express();
 const PORT = process.env.PORT || 3000;
 const SECRET = process.env.JWT_SECRET || "football_points_secret_key";
-const FOOTBALL_API_KEY = process.env.FOOTBALL_API_KEY || "4756663574ab4d2f980aa1ac8b41dab7";
+const FOOTBALL_API_KEY = process.env.FOOTBALL_API_KEY || "9a81c49274dc439096c7d625ce507deb";
 const ODDS_API_KEY = process.env.ODDS_API_KEY || "69a4b7e72c93d662cb2f42ac703f2bef";
 
 // Maps your DB team names <-> football-data.org team names
