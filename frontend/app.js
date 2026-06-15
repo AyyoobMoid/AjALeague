@@ -978,3 +978,41 @@ async function confirmBet(matchId) {
     alert(data.message || "Bet failed.");
   }
 }
+
+// ─── AUTO LOGIN ON PAGE LOAD ─────────────────────────────────────────────────
+
+window.addEventListener("DOMContentLoaded", async () => {
+  const token = localStorage.getItem("token");
+  if (!token) {
+    showLogin();
+    return;
+  }
+
+  try {
+    const res = await fetch(`${API}/me`, {
+      headers: { "Authorization": token }
+    });
+
+    if (!res.ok) {
+      localStorage.removeItem("token");
+      localStorage.removeItem("isAdmin");
+      showLogin();
+      return;
+    }
+
+    const data = await res.json();
+    updateDashboardUser(data.username, data.points);
+
+    if (data.is_admin === 1) {
+      document.getElementById("adminButton") && 
+        document.getElementById("adminButton").classList.remove("hidden");
+    }
+
+    showDashboard();
+    refreshUserData();
+
+  } catch (err) {
+    showLogin();
+  }
+});
+
