@@ -444,15 +444,21 @@ if (match.result) {
       }
     </div>
     <div class="bet-options">
-      <button class="bet-btn ${userPrediction.selected_team === match.team_a ? 'bet-btn-active' : ''}" onclick="selectBet(${match.id}, '${match.team_a}', ${match.odds_a || 2})">
+      <button class="bet-btn ${userPrediction.selected_team === match.team_a ? 'bet-btn-active' : (!inCooldown ? 'bet-btn-locked' : '')}"
+        ${!inCooldown && userPrediction.selected_team !== match.team_a ? 'disabled title="Can only change pick within 5 minutes"' : ''}
+        onclick="selectBet(${match.id}, '${match.team_a}', ${match.odds_a || 2})">
         <span class="bet-team">${match.team_a}</span>
         <span class="bet-odds">${match.odds_a ? parseFloat(match.odds_a).toFixed(2) + 'x' : '2.00x'}</span>
       </button>
-      <button class="bet-btn draw-btn ${userPrediction.selected_team === 'DRAW' ? 'bet-btn-active' : ''}" onclick="selectBet(${match.id}, 'DRAW', ${match.odds_draw || 1.5})">
+      <button class="bet-btn draw-btn ${userPrediction.selected_team === 'DRAW' ? 'bet-btn-active' : (!inCooldown ? 'bet-btn-locked' : '')}"
+        ${!inCooldown && userPrediction.selected_team !== 'DRAW' ? 'disabled title="Can only change pick within 5 minutes"' : ''}
+        onclick="selectBet(${match.id}, 'DRAW', ${match.odds_draw || 1.5})">
         <span class="bet-team">Draw</span>
         <span class="bet-odds">${match.odds_draw ? parseFloat(match.odds_draw).toFixed(2) + 'x' : '1.50x'}</span>
       </button>
-      <button class="bet-btn ${userPrediction.selected_team === match.team_b ? 'bet-btn-active' : ''}" onclick="selectBet(${match.id}, '${match.team_b}', ${match.odds_b || 2})">
+      <button class="bet-btn ${userPrediction.selected_team === match.team_b ? 'bet-btn-active' : (!inCooldown ? 'bet-btn-locked' : '')}"
+        ${!inCooldown && userPrediction.selected_team !== match.team_b ? 'disabled title="Can only change pick within 5 minutes"' : ''}
+        onclick="selectBet(${match.id}, '${match.team_b}', ${match.odds_b || 2})">
         <span class="bet-team">${match.team_b}</span>
         <span class="bet-odds">${match.odds_b ? parseFloat(match.odds_b).toFixed(2) + 'x' : '2.00x'}</span>
       </button>
@@ -1058,6 +1064,18 @@ async function confirmBet(matchId, isUpdate = false) {
   const pts = parseInt(document.getElementById("points-" + matchId).value);
   if (!pts || pts <= 0) { alert("Enter points to bet."); return; }
   if (pts % 5 !== 0) { alert("Points must be a multiple of 5."); return; }
+
+  const potentialWin = Math.floor(pts * bet.odds);
+  const profit = potentialWin - pts;
+  const action = isUpdate ? "update your bet to" : "place a bet of";
+  const confirmed = confirm(
+    `⚠️ Confirm Bet\n\n` +
+    `You are about to ${action} ${pts.toLocaleString()} pts on ${bet.pick} at ${bet.odds}x odds.\n\n` +
+    `✅ If correct: you win ${potentialWin.toLocaleString()} pts (+${profit.toLocaleString()} profit)\n` +
+    `❌ If wrong: you lose ${pts.toLocaleString()} pts\n\n` +
+    `Are you sure?`
+  );
+  if (!confirmed) return;
 
   const endpoint = isUpdate ? `${API}/update-predict` : `${API}/predict`;
 

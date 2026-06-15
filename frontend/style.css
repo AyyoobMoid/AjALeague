@@ -1855,3 +1855,11 @@ button:hover::after {
 .cancel-btn:hover {
   background: rgba(239, 68, 68, 0.25);
 }
+
+/* ─── LOCKED BET BUTTON ──────────────────────────────────────────────────── */
+.bet-btn-locked,
+.bet-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+  filter: grayscale(0.5);
+}
