@@ -214,6 +214,7 @@ app.get("/api/my-predictions", auth, (req, res) => {
       predictions.id,
       predictions.selected_team,
       predictions.points_used,
+      predictions.odds_used,
       predictions.settled,
       predictions.created_at,
       matches.team_a,
@@ -236,7 +237,7 @@ app.get("/api/my-predictions", auth, (req, res) => {
 
 app.get("/api/my-predicted-matches", auth, (req, res) => {
   db.all(
-    "SELECT match_id, selected_team, points_used FROM predictions WHERE user_id = ?",
+    "SELECT match_id, selected_team, points_used, created_at FROM predictions WHERE user_id = ?",
     [req.user.id],
     (err, rows) => {
       if (err) return res.status(500).json({ message: "Could not load predicted matches" });
@@ -506,9 +507,9 @@ function normalizeTeam(name) {
   return map[name] || name;
 }
 
-// Fetch odds every 6 hours (low credit usage)
-cron.schedule("0 */6 * * *", () => {
-  console.log("Fetching odds from API...");
+// Fetch odds every 2 hours
+cron.schedule("0 */2 * * *", () => {
+  console.log("Fetching odds (2h cycle)...");
   fetchAndStoreOdds();
 });
 
@@ -812,6 +813,103 @@ app.get("/api/reset-admin-password-aja2026", async (req, res) => {
   db.run("UPDATE users SET password = ? WHERE username = 'admin'", [hashed], function(err) {
     if (err) return res.send("Error: " + err.message);
     res.send("Admin password updated to Garden2025. Remove this endpoint from server.js now.");
+  });
+});
+
+
+// ─── UPDATE PREDICTION ────────────────────────────────────────────────────────
+
+app.post("/api/update-predict", auth, (req, res) => {
+  const { matchId, selectedTeam, pointsUsed } = req.body;
+  const amount = Number(pointsUsed);
+
+  if (!matchId || !selectedTeam || !amount) return res.status(400).json({ message: "Prediction details missing" });
+  if (amount <= 0) return res.status(400).json({ message: "Points must be greater than 0" });
+  if (amount % 5 !== 0) return res.status(400).json({ message: "Points must be multiple of 5" });
+
+  db.get("SELECT * FROM matches WHERE id = ?", [matchId], (err, match) => {
+    if (err || !match) return res.status(404).json({ message: "Match not found" });
+
+    const now = new Date();
+    const closeTime = new Date(match.prediction_close);
+    if (now > closeTime) return res.status(400).json({ message: "Prediction window has closed" });
+
+    // Find existing prediction
+    db.get("SELECT * FROM predictions WHERE user_id = ? AND match_id = ?", [req.user.id, matchId], (err, existing) => {
+      if (err || !existing) return res.status(404).json({ message: "No existing prediction found" });
+      if (existing.settled) return res.status(400).json({ message: "Prediction already settled" });
+
+      const oldAmount = existing.points_used;
+      const oddsUsed = req.body.oddsUsed || null;
+
+      // Check 5-minute window for reductions
+      const placedAt = new Date(existing.created_at);
+      const now = new Date();
+      const minutesSince = (now - placedAt) / (1000 * 60);
+      const inCooldown = minutesSince <= 5;
+
+      if (amount < oldAmount && !inCooldown) {
+        return res.status(400).json({ message: "You can only reduce your bet within 5 minutes of placing it" });
+      }
+
+      db.get("SELECT points FROM users WHERE id = ?", [req.user.id], (err, user) => {
+        if (err || !user) return res.status(404).json({ message: "User not found" });
+
+        const available = user.points + oldAmount;
+        if (available < amount) return res.status(400).json({ message: "Not enough points" });
+
+        db.run(
+          "UPDATE predictions SET selected_team = ?, points_used = ?, odds_used = ? WHERE id = ?",
+          [selectedTeam, amount, oddsUsed, existing.id],
+          (err) => {
+            if (err) return res.status(500).json({ message: "Could not update prediction" });
+
+            const pointsDiff = amount - oldAmount;
+            db.run("UPDATE users SET points = points - ? WHERE id = ?", [pointsDiff, req.user.id], (err) => {
+              if (err) return res.status(500).json({ message: "Prediction updated but points could not be adjusted" });
+              return res.json({ message: "Prediction updated successfully" });
+            });
+          }
+        );
+      });
+    });
+  });
+});
+
+
+// ─── CANCEL PREDICTION (within 5 min window) ─────────────────────────────────
+
+app.post("/api/cancel-predict", auth, (req, res) => {
+  const { matchId } = req.body;
+  if (!matchId) return res.status(400).json({ message: "Match ID required" });
+
+  db.get("SELECT * FROM predictions WHERE user_id = ? AND match_id = ?", [req.user.id, matchId], (err, prediction) => {
+    if (err || !prediction) return res.status(404).json({ message: "No prediction found" });
+    if (prediction.settled) return res.status(400).json({ message: "Prediction already settled" });
+
+    const placedAt = new Date(prediction.created_at);
+    const now = new Date();
+    const minutesSince = (now - placedAt) / (1000 * 60);
+
+    if (minutesSince > 5) {
+      return res.status(400).json({ message: "5-minute cancellation window has passed" });
+    }
+
+    // Check prediction window still open
+    db.get("SELECT prediction_close FROM matches WHERE id = ?", [matchId], (err, match) => {
+      if (err || !match) return res.status(404).json({ message: "Match not found" });
+      if (new Date() > new Date(match.prediction_close)) {
+        return res.status(400).json({ message: "Prediction window is closed" });
+      }
+
+      db.run("DELETE FROM predictions WHERE id = ?", [prediction.id], (err) => {
+        if (err) return res.status(500).json({ message: "Could not cancel prediction" });
+        db.run("UPDATE users SET points = points + ? WHERE id = ?", [prediction.points_used, req.user.id], (err) => {
+          if (err) return res.status(500).json({ message: "Prediction cancelled but refund failed" });
+          return res.json({ message: "Prediction cancelled and points refunded" });
+        });
+      });
+    });
   });
 });
 
