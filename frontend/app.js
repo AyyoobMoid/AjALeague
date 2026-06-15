@@ -37,33 +37,14 @@ function acceptRegisterNotice() {
     .classList.add("hidden");
 }
 function showDashboard() {
-
   document.getElementById("loginPage").classList.add("hidden");
-
   document.getElementById("registerPage").classList.add("hidden");
-
-  document.getElementById("dashboardPage").classList.add("hidden");
-
-  document.getElementById("matchesSection").classList.add("hidden");
-
-  document
-    .getElementById("dashboardNoticeModal")
-    .classList.remove("hidden");
-
+  document.getElementById("dashboardPage").classList.remove("hidden");
+  hideAllDashboardSections();
 }
 
 function enterDashboard() {
-
-  document
-    .getElementById("dashboardNoticeModal")
-    .classList.add("hidden");
-
-  document
-    .getElementById("dashboardPage")
-    .classList.remove("hidden");
-
-  hideAllDashboardSections();
-
+  showDashboard();
 }
 
 
