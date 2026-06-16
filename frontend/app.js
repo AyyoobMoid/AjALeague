@@ -461,14 +461,16 @@ if (match.result) {
 
 } else if (userPrediction && now >= openTime && now <= closeTime) {
 
-  // Calculate 5-minute window
-  const betPlacedAt = new Date(userPrediction.created_at);
-  const cooldownEnd = new Date(betPlacedAt.getTime() + 5 * 60 * 1000);
-  const inCooldown = now < cooldownEnd;
-  const secondsLeft = Math.max(0, Math.floor((cooldownEnd - now) / 1000));
-  const cooldownMins = Math.floor(secondsLeft / 60);
-  const cooldownSecs = secondsLeft % 60;
-  const cooldownStr = inCooldown ? `${cooldownMins}:${String(cooldownSecs).padStart(2,'0')}` : null;
+  // Free editing until window closes — no cooldown
+  // Check if odds have drifted from the locked-in odds
+  const lockedOdds = userPrediction.odds_used ? parseFloat(userPrediction.odds_used) : null;
+  let currentOdds = null;
+  if (userPrediction.selected_team === match.team_a) currentOdds = match.odds_a ? parseFloat(match.odds_a) : null;
+  else if (userPrediction.selected_team === match.team_b) currentOdds = match.odds_b ? parseFloat(match.odds_b) : null;
+  else if (userPrediction.selected_team === 'DRAW') currentOdds = match.odds_draw ? parseFloat(match.odds_draw) : null;
+
+  const oddsChanged = lockedOdds && currentOdds && Math.abs(lockedOdds - currentOdds) >= 0.01;
+  const lockedPayout = lockedOdds ? Math.floor(userPrediction.points_used * lockedOdds) : 0;
 
   actionHtml = `
   <div class="countdown-box">
@@ -478,34 +480,30 @@ if (match.result) {
 
   <div class="prediction-box">
     <div class="bet-status-bar">
-      <p>✅ Current bet: <strong>${userPrediction.selected_team}</strong> · <strong>${userPrediction.points_used.toLocaleString()} pts</strong></p>
-      <p class="cooldown-notice" id="cooldown-label-${match.id}">
-        ${inCooldown
-          ? `⏱ Cancel/reduce window: <strong id="cooldown-${match.id}">${cooldownStr}</strong>`
-          : `🔒 Can only increase bet now`
-        }
-      </p>
-      ${inCooldown
-        ? `<button class="cancel-btn" id="cancel-btn-${match.id}" onclick="cancelBet(${match.id})">✕ Cancel Bet</button>`
+      <p>✅ Current bet: <strong>${userPrediction.selected_team}</strong> · <strong>${userPrediction.points_used.toLocaleString()} pts</strong>${lockedOdds ? ` @ <strong>${lockedOdds.toFixed(2)}x</strong>` : ''}</p>
+      ${lockedOdds ? `<p style="font-size:0.82rem;color:#22c55e;">Locked payout if correct: ${lockedPayout.toLocaleString()} pts</p>` : ''}
+      ${oddsChanged
+        ? `<div class="odds-change-notice">
+             <p>⚠ Odds changed: <strong>${lockedOdds.toFixed(2)}x → ${currentOdds.toFixed(2)}x</strong></p>
+             <p style="font-size:0.78rem;opacity:0.8;">Adjusting moves your whole stake to the new odds.</p>
+             <button class="adjust-odds-btn" onclick="adjustOdds(${match.id}, '${userPrediction.selected_team}', ${currentOdds}, ${userPrediction.points_used})">↻ Move to ${currentOdds.toFixed(2)}x</button>
+           </div>`
         : ''
       }
+      <button class="cancel-btn" onclick="cancelBet(${match.id})">✕ Cancel Bet</button>
     </div>
+
+    <p style="font-size:0.82rem;color:#aaa;margin:8px 0 4px;">Change pick or amount anytime before close:</p>
     <div class="bet-options">
-      <button class="bet-btn ${userPrediction.selected_team === match.team_a ? 'bet-btn-active' : (!inCooldown ? 'bet-btn-locked' : '')}"
-        ${!inCooldown && userPrediction.selected_team !== match.team_a ? 'disabled title="Can only change pick within 5 minutes"' : ''}
-        onclick="selectBet(${match.id}, '${match.team_a}', ${match.odds_a || 2})">
+      <button class="bet-btn ${userPrediction.selected_team === match.team_a ? 'bet-btn-active' : ''}" onclick="selectBet(${match.id}, '${match.team_a}', ${match.odds_a || 2})">
         <span class="bet-team">${match.team_a}</span>
         <span class="bet-odds">${match.odds_a ? parseFloat(match.odds_a).toFixed(2) + 'x' : '2.00x'}</span>
       </button>
-      <button class="bet-btn draw-btn ${userPrediction.selected_team === 'DRAW' ? 'bet-btn-active' : (!inCooldown ? 'bet-btn-locked' : '')}"
-        ${!inCooldown && userPrediction.selected_team !== 'DRAW' ? 'disabled title="Can only change pick within 5 minutes"' : ''}
-        onclick="selectBet(${match.id}, 'DRAW', ${match.odds_draw || 1.5})">
+      <button class="bet-btn draw-btn ${userPrediction.selected_team === 'DRAW' ? 'bet-btn-active' : ''}" onclick="selectBet(${match.id}, 'DRAW', ${match.odds_draw || 1.5})">
         <span class="bet-team">Draw</span>
         <span class="bet-odds">${match.odds_draw ? parseFloat(match.odds_draw).toFixed(2) + 'x' : '1.50x'}</span>
       </button>
-      <button class="bet-btn ${userPrediction.selected_team === match.team_b ? 'bet-btn-active' : (!inCooldown ? 'bet-btn-locked' : '')}"
-        ${!inCooldown && userPrediction.selected_team !== match.team_b ? 'disabled title="Can only change pick within 5 minutes"' : ''}
-        onclick="selectBet(${match.id}, '${match.team_b}', ${match.odds_b || 2})">
+      <button class="bet-btn ${userPrediction.selected_team === match.team_b ? 'bet-btn-active' : ''}" onclick="selectBet(${match.id}, '${match.team_b}', ${match.odds_b || 2})">
         <span class="bet-team">${match.team_b}</span>
         <span class="bet-odds">${match.odds_b ? parseFloat(match.odds_b).toFixed(2) + 'x' : '2.00x'}</span>
       </button>
@@ -632,28 +630,6 @@ if (match.result) {
   const timerElement = document.getElementById(`timer-${match.id}`);
   if (timerElement) {
     timerElement.innerHTML = getCountdown(closeTime);
-  }
-
-  // Update cooldown timer if exists
-  const cooldownEl = document.getElementById(`cooldown-${match.id}`);
-  const cooldownLabel = document.getElementById(`cooldown-label-${match.id}`);
-  if (cooldownEl && cooldownLabel) {
-    const betPlaced = userPrediction ? new Date(userPrediction.created_at) : null;
-    if (betPlaced) {
-      const coolEnd = new Date(betPlaced.getTime() + 5 * 60 * 1000);
-      const secsLeft = Math.max(0, Math.floor((coolEnd - new Date()) / 1000));
-      if (secsLeft > 0) {
-        const m = Math.floor(secsLeft / 60);
-        const s = secsLeft % 60;
-        cooldownEl.innerHTML = `${m}:${String(s).padStart(2,'0')}`;
-      } else {
-        // Window expired — update label and hide cancel button
-        cooldownLabel.innerHTML = '🔒 Can only increase bet now';
-        cooldownLabel.className = 'cooldown-notice cooldown-expired';
-        const cancelBtn = document.getElementById(`cancel-btn-${match.id}`);
-        if (cancelBtn) cancelBtn.style.display = 'none';
-      }
-    }
   }
 }, 1000);
       });
@@ -1164,6 +1140,29 @@ async function confirmBet(matchId, isUpdate = false) {
 
   } else {
     alert(data.message || "Bet failed.");
+  }
+}
+
+
+async function adjustOdds(matchId, pick, newOdds, stake) {
+  const token = localStorage.getItem("token");
+  const newPayout = Math.floor(stake * newOdds);
+  if (!confirm(`Move your ${stake.toLocaleString()} pts to ${newOdds.toFixed(2)}x odds?\n\nNew payout if correct: ${newPayout.toLocaleString()} pts`)) return;
+
+  const res = await fetch(`${API}/update-predict`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "Authorization": token },
+    body: JSON.stringify({ matchId, selectedTeam: pick, pointsUsed: stake, oddsUsed: newOdds })
+  });
+
+  const data = await res.json();
+  if (res.ok) {
+    showNotification("Odds updated to " + newOdds.toFixed(2) + "x");
+    lastKnownPoints = null;
+    await refreshUserData();
+    await Promise.all([loadMatches(true), loadLeaderboard()]);
+  } else {
+    alert(data.message || "Could not adjust odds.");
   }
 }
 

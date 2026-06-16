@@ -1888,3 +1888,36 @@ button:hover::after {
   font-size: 1.1rem;
   font-weight: 900;
 }
+
+/* ─── ODDS CHANGE NOTICE & ADJUST BUTTON ─────────────────────────────────── */
+.odds-change-notice {
+  background: rgba(249, 115, 22, 0.1);
+  border: 1px solid rgba(249, 115, 22, 0.4);
+  border-radius: 10px;
+  padding: 0.6rem 0.8rem;
+  margin: 0.5rem 0;
+}
+
+.odds-change-notice p {
+  margin: 0.15rem 0;
+  font-size: 0.85rem;
+  color: #f97316;
+}
+
+.adjust-odds-btn {
+  margin-top: 0.4rem;
+  background: rgba(249, 115, 22, 0.2);
+  border: 1px solid rgba(249, 115, 22, 0.5);
+  color: #f97316;
+  border-radius: 8px;
+  padding: 6px 14px;
+  font-size: 0.82rem;
+  font-weight: bold;
+  cursor: pointer;
+  width: auto;
+  display: inline-block;
+}
+
+.adjust-odds-btn:hover {
+  background: rgba(249, 115, 22, 0.3);
+}
