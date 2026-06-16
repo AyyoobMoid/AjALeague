@@ -850,19 +850,8 @@ app.post("/api/update-predict", auth, (req, res) => {
       const oldAmount = existing.points_used;
       const oddsUsed = req.body.oddsUsed || null;
 
-      // Check 5-minute window for reductions
-      const placedAt = new Date(existing.created_at);
-      const now = new Date();
-      const minutesSince = (now - placedAt) / (1000 * 60);
-      const inCooldown = minutesSince <= 5;
-
-      if (!inCooldown && amount < oldAmount) {
-        return res.status(400).json({ message: "You can only reduce your bet within 5 minutes of placing it" });
-      }
-
-      if (!inCooldown && selectedTeam !== existing.selected_team) {
-        return res.status(400).json({ message: "You can only change your pick within 5 minutes of placing it" });
-      }
+      // Free editing allowed until prediction window closes — no cooldown.
+      // The window-closed check above (now > closeTime) already prevents late edits.
 
       db.get("SELECT points FROM users WHERE id = ?", [req.user.id], (err, user) => {
         if (err || !user) return res.status(404).json({ message: "User not found" });
