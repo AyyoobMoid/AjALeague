@@ -188,6 +188,7 @@ app.get("/api/user-history/:username", auth, (req, res) => {
       `SELECT
         predictions.selected_team,
         predictions.points_used,
+        predictions.odds_used,
         predictions.settled,
         matches.team_a,
         matches.team_b,
@@ -970,18 +971,16 @@ app.get("/api/house-total", (req, res) => {
       let houseTotal = 0;
       rows.forEach(p => {
         const staked = p.points_used;
-        const isDraw = p.result === "DRAW";
-        const isWin = !isDraw && p.selected_team === p.result;
-        const isPaid = isDraw || isWin;
+        const isCorrect = p.selected_team === p.result;
 
         let odds = parseFloat(p.odds_used);
-        if (!odds) {
-          if (isDraw) odds = parseFloat(p.odds_draw);
-          else if (isWin) odds = p.selected_team === p.team_a ? parseFloat(p.odds_a) : parseFloat(p.odds_b);
+        if (!odds && isCorrect) {
+          if (p.result === "DRAW") odds = parseFloat(p.odds_draw);
+          else odds = p.selected_team === p.team_a ? parseFloat(p.odds_a) : parseFloat(p.odds_b);
         }
 
-        const payout = isPaid && odds ? Math.floor(staked * odds) : 0;
-        houseTotal += staked - payout; // house keeps stake minus payout
+        const payout = isCorrect && odds ? Math.floor(staked * odds) : 0;
+        houseTotal += staked - payout;
       });
 
       res.json({ houseTotal });
