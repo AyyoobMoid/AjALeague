@@ -1154,7 +1154,7 @@ async function confirmBet(matchId, isUpdate = false) {
   const data = await res.json();
   hideLoadingOverlay();
   if (res.ok) {
-    playPredictSound();
+    playSound("predictSound");
     const betMsg = isUpdate ? "Bet updated!" : "Bet placed!";
     showNotification(betMsg + " " + bet.pick + " @ " + bet.odds + "x for " + pts.toLocaleString() + " pts");
 
