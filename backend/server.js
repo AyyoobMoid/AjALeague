@@ -240,6 +240,7 @@ app.get("/api/my-predictions", auth, (req, res) => {
 });
 
 app.get("/api/my-predicted-matches", auth, (req, res) => {
+  res.set("Cache-Control", "no-store");
   db.all(
     "SELECT match_id, selected_team, points_used, created_at FROM predictions WHERE user_id = ?",
     [req.user.id],
