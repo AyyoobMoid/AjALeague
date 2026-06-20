@@ -946,6 +946,43 @@ app.get("/api/house-total", (req, res) => {
 });
 
 
+// ─── RECENT SETTLED BETS (for login notifications) ───────────────────────────
+
+app.get("/api/my-recent-results", auth, (req, res) => {
+  res.set("Cache-Control", "no-store");
+  db.all(
+    `SELECT predictions.selected_team, predictions.points_used, predictions.odds_used,
+            matches.team_a, matches.team_b, matches.result, matches.settled_at
+     FROM predictions
+     JOIN matches ON predictions.match_id = matches.id
+     WHERE predictions.user_id = ? AND predictions.settled = 1
+       AND matches.settled_at > NOW() - INTERVAL '24 hours'
+     ORDER BY matches.settled_at DESC`,
+    [req.user.id],
+    (err, rows) => {
+      if (err) return res.status(500).json({ message: "Could not load recent results" });
+
+      const results = rows.map(r => {
+        const isCorrect = r.selected_team === r.result;
+        const odds = r.odds_used ? parseFloat(r.odds_used) : null;
+        const payout = isCorrect && odds ? Math.floor(r.points_used * odds) : 0;
+        return {
+          match: `${r.team_a} vs ${r.team_b}`,
+          pick: r.selected_team,
+          result: r.result,
+          stake: r.points_used,
+          won: isCorrect,
+          payout: payout,
+          profit: isCorrect ? payout - r.points_used : -r.points_used
+        };
+      });
+
+      res.json(results);
+    }
+  );
+});
+
+
 app.listen(PORT, "0.0.0.0", () => {
   console.log(`Football Points League running on http://localhost:${PORT}`);
 });
