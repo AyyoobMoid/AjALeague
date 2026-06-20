@@ -1921,3 +1921,26 @@ button:hover::after {
 .adjust-odds-btn:hover {
   background: rgba(249, 115, 22, 0.3);
 }
+
+/* ─── NOT TO LOSE BUTTONS ────────────────────────────────────────────────── */
+.ntl-options {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid rgba(255,214,0,0.1);
+}
+
+.ntl-btn {
+  background: rgba(99, 102, 241, 0.1) !important;
+  border-color: rgba(99, 102, 241, 0.4) !important;
+  flex: 1;
+}
+
+.ntl-btn:hover {
+  background: rgba(99, 102, 241, 0.2) !important;
+}
+
+.ntl-btn.bet-btn-active {
+  background: rgba(99, 102, 241, 0.3) !important;
+  border-color: rgba(99, 102, 241, 0.8) !important;
+  box-shadow: 0 0 12px rgba(99, 102, 241, 0.4);
+}
