@@ -18,6 +18,7 @@ const TEAM_NAME_MAP = {
   "United States": "USA",
   "South Korea": "Korea Republic",
   "Turkey": "Turkiye",
+  "Türkiye": "Turkiye",
   "Bosnia-Herzegovina": "Bosnia and Herzegovina",
   "Cape Verde Islands": "Cabo Verde",
   "Curaçao": "Curacao",
@@ -92,7 +93,7 @@ app.post("/api/login", (req, res) => {
       const match = await bcrypt.compare(password, user.password);
       if (match) {
         if (user.is_active === 0) {
-          return res.status(403).json({ message: "Account disabled because you lost all points after match settlement" });
+          return res.status(403).json({ message: "Your account is not yet active. Please contact +966 50 347 5147." });
         }
         const token = jwt.sign({ id: user.id, username: user.username, isAdmin: user.is_admin === 1 }, SECRET);
         return res.json({ token, username: user.username, points: user.points, isAdmin: user.is_admin === 1 });
@@ -251,7 +252,8 @@ app.get("/api/my-predicted-matches", auth, (req, res) => {
 
 app.get("/api/my-stats", auth, (req, res) => {
   db.all(
-    `SELECT predictions.selected_team, predictions.points_used, predictions.settled, matches.result
+    `SELECT predictions.selected_team, predictions.points_used, predictions.settled,
+            matches.result, matches.team_a, matches.team_b
      FROM predictions
      JOIN matches ON predictions.match_id = matches.id
      WHERE predictions.user_id = ?`,
@@ -265,11 +267,15 @@ app.get("/api/my-stats", auth, (req, res) => {
         totalPointsUsed += item.points_used;
         if (!item.settled || !item.result) {
           pending++;
-        } else if (item.selected_team === item.result) {
-          correct++;
-          if (item.result === "DRAW") draws++;
         } else {
-          losses++;
+          const isNTL_a = item.selected_team === "NTL_a";
+          const isNTL_b = item.selected_team === "NTL_b";
+          let isCorrect = false;
+          if (isNTL_a) isCorrect = item.result === item.team_a || item.result === "DRAW";
+          else if (isNTL_b) isCorrect = item.result === item.team_b || item.result === "DRAW";
+          else isCorrect = item.selected_team === item.result;
+          if (isCorrect) { correct++; if (item.result === "DRAW") draws++; }
+          else losses++;
         }
       });
 
@@ -310,19 +316,17 @@ function settleMatch(matchId, result, callback) {
           predictions.forEach((prediction) => {
             let reward = 0;
             const isWin = prediction.selected_team === result;
-            // Only pay if pick exactly matches result (DRAW must be picked as DRAW)
-            if (prediction.selected_team === result) {
-              let odds;
-              if (prediction.odds_used) {
-                odds = parseFloat(prediction.odds_used);
-              } else if (result === "DRAW") {
-                odds = parseFloat(match.odds_draw) || null;
-              } else {
-                odds = result === match.team_a ? parseFloat(match.odds_a) : parseFloat(match.odds_b);
-              }
-              if (odds) {
-                reward = Math.floor(prediction.points_used * odds);
-              }
+            // NTL bets: NTL_a pays if team_a wins OR draws; NTL_b pays if team_b wins OR draws
+            const isNTL_a = prediction.selected_team === "NTL_a";
+            const isNTL_b = prediction.selected_team === "NTL_b";
+            let isCorrect = false;
+            if (isNTL_a) isCorrect = result === match.team_a || result === "DRAW";
+            else if (isNTL_b) isCorrect = result === match.team_b || result === "DRAW";
+            else isCorrect = prediction.selected_team === result;
+
+            if (isCorrect) {
+              const odds = prediction.odds_used ? parseFloat(prediction.odds_used) : null;
+              if (odds) reward = Math.floor(prediction.points_used * odds);
             }
 
             db.run("UPDATE users SET points = points + ? WHERE id = ?", [reward, prediction.user_id], () => {
@@ -645,10 +649,16 @@ app.get("/api/user-profile/:username", auth, (req, res) => {
 
           let wins = 0;
           predictions.forEach((p) => {
-            if (p.result && p.result !== "DRAW" && p.selected_team === p.result) wins++;
+            if (!p.result || !p.settled) return;
+            const isNTL_a = p.selected_team === "NTL_a";
+            const isNTL_b = p.selected_team === "NTL_b";
+            if (isNTL_a) { if (p.result === p.team_a || p.result === "DRAW") wins++; }
+            else if (isNTL_b) { if (p.result === p.team_b || p.result === "DRAW") wins++; }
+            else if (p.selected_team === p.result) wins++;
           });
 
-          const successRate = predictions.length > 0 ? Math.round((wins / predictions.length) * 100) : 0;
+          const settled = predictions.filter(p => p.result && p.settled).length;
+          const successRate = settled > 0 ? Math.round((wins / settled) * 100) : 0;
           res.json({
             username: user.username, fullName: user.full_name, roomNumber: user.room_number,
             country: user.country, joined: user.created_at, points: user.points,
@@ -814,17 +824,6 @@ app.get("/api/AyyoobOnly/bets", (req, res) => {
 });
 
 
-// ─── ONE-TIME PASSWORD RESET (remove after use) ───────────────────────────────
-
-app.get("/api/reset-admin-password-aja2026", async (req, res) => {
-  const hashed = await require("bcryptjs").hash("Garden2025", 10);
-  db.run("UPDATE users SET password = ? WHERE username = 'admin'", [hashed], function(err) {
-    if (err) return res.send("Error: " + err.message);
-    res.send("Admin password updated to Garden2025. Remove this endpoint from server.js now.");
-  });
-});
-
-
 // ─── UPDATE PREDICTION ────────────────────────────────────────────────────────
 
 app.post("/api/update-predict", auth, (req, res) => {
@@ -888,15 +887,7 @@ app.post("/api/cancel-predict", auth, (req, res) => {
     if (err || !prediction) return res.status(404).json({ message: "No prediction found" });
     if (prediction.settled) return res.status(400).json({ message: "Prediction already settled" });
 
-    const placedAt = new Date(prediction.created_at);
-    const now = new Date();
-    const minutesSince = (now - placedAt) / (1000 * 60);
-
-    if (minutesSince > 5) {
-      return res.status(400).json({ message: "5-minute cancellation window has passed" });
-    }
-
-    // Check prediction window still open
+    // Check prediction window still open — free cancellation until window closes
     db.get("SELECT prediction_close FROM matches WHERE id = ?", [matchId], (err, match) => {
       if (err || !match) return res.status(404).json({ message: "Match not found" });
       if (new Date() > new Date(match.prediction_close)) {
@@ -949,7 +940,7 @@ app.get("/api/house-total", (req, res) => {
   db.all(
     `SELECT predictions.points_used, predictions.odds_used, predictions.settled,
             predictions.selected_team, matches.result, matches.odds_a, matches.odds_b,
-            matches.odds_draw, matches.team_a
+            matches.odds_draw, matches.team_a, matches.team_b
      FROM predictions
      JOIN matches ON predictions.match_id = matches.id
      WHERE predictions.settled = 1`,
@@ -960,14 +951,14 @@ app.get("/api/house-total", (req, res) => {
       let houseTotal = 0;
       rows.forEach(p => {
         const staked = p.points_used;
-        const isCorrect = p.selected_team === p.result;
+        const isNTL_a = p.selected_team === "NTL_a";
+        const isNTL_b = p.selected_team === "NTL_b";
+        let isCorrect = false;
+        if (isNTL_a) isCorrect = p.result === p.team_a || p.result === "DRAW";
+        else if (isNTL_b) isCorrect = p.result === p.team_b || p.result === "DRAW";
+        else isCorrect = p.selected_team === p.result;
 
-        let odds = parseFloat(p.odds_used);
-        if (!odds && isCorrect) {
-          if (p.result === "DRAW") odds = parseFloat(p.odds_draw);
-          else odds = p.selected_team === p.team_a ? parseFloat(p.odds_a) : parseFloat(p.odds_b);
-        }
-
+        const odds = parseFloat(p.odds_used) || null;
         const payout = isCorrect && odds ? Math.floor(staked * odds) : 0;
         houseTotal += staked - payout;
       });
