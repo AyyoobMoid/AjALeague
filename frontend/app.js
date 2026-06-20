@@ -663,7 +663,7 @@ if (match.result) {
       });
 
       box.innerHTML += `
-        <details class="date-dropdown">
+        <details class="date-dropdown" open>
           <summary>${date}</summary>
 
           <div class="date-matches">
@@ -1187,9 +1187,10 @@ async function confirmBet(matchId, isUpdate = false) {
     // 4. Re-render match cards from cached data + updated predictedMatches (no fetch)
     renderMatchCards(cachedMatches);
 
-    // 5. Sync from server in background to catch any discrepancy (suppress notification)
+    // 5. Sync leaderboard immediately, delay points sync so DB write can commit first
+    loadLeaderboard();
     suppressNextPointsNotification = true;
-    Promise.all([refreshUserData(), loadLeaderboard()]);
+    setTimeout(refreshUserData, 1500);
 
   } else {
     alert(data.message || "Bet failed.");
@@ -1211,9 +1212,12 @@ async function adjustOdds(matchId, pick, newOdds, stake) {
   const data = await res.json();
   if (res.ok) {
     showNotification("Odds updated to " + newOdds.toFixed(2) + "x");
-    lastKnownPoints = null;
-    await refreshUserData();
-    await Promise.all([loadMatches(true), loadLeaderboard()]);
+    // Optimistic: odds changed but stake stays same, so no balance change
+    const adjIdx = predictedMatches.findIndex(p => p.match_id === matchId);
+    if (adjIdx >= 0) predictedMatches[adjIdx].odds_used = newOdds;
+    renderMatchCards(cachedMatches);
+    loadLeaderboard();
+    setTimeout(refreshUserData, 1500);
   } else {
     alert(data.message || "Could not adjust odds.");
   }
@@ -1246,8 +1250,9 @@ async function cancelBet(matchId) {
     }
     showNotification("Bet cancelled — points refunded!");
     renderMatchCards(cachedMatches);
+    loadLeaderboard();
     suppressNextPointsNotification = true;
-    Promise.all([refreshUserData(), loadLeaderboard()]);
+    setTimeout(refreshUserData, 1500);
   } else {
     alert(data.message || "Could not cancel bet.");
   }
