@@ -226,6 +226,7 @@ async function login() {
 
     localStorage.setItem("token", data.token);
     localStorage.setItem("isAdmin", data.isAdmin ? "true" : "false");
+    localStorage.setItem("currentUsername", data.username);
 
     lastKnownPoints = data.points;
 
@@ -371,12 +372,9 @@ async function loadMatches(bustCache = false) {
     let predictedMatches = [];
 
     if (token) {
-      const predictedRes = await fetch(`${API}/my-predicted-matches`, {
-        headers: {
-          "Authorization": token
-        }
+      const predictedRes = await fetch(`${API}/my-predicted-matches${bustCache ? `?t=${Date.now()}` : ''}`, {
+        headers: { "Authorization": token }
       });
-
       predictedMatches = await predictedRes.json();
     }
 
@@ -1138,10 +1136,19 @@ async function confirmBet(matchId, isUpdate = false) {
     if (input) input.value = "";
     delete activeBet[matchId];
 
-    // Set lastKnownPoints to null so refreshUserData updates display without showing a notification
-    // Load matches first so card immediately shows the placed bet
+    // Immediately update points display — we know exactly what was deducted
+    if (lastKnownPoints !== null) {
+      const immediatePoints = isUpdate
+        ? lastKnownPoints - (pts - (data.oldStake || pts)) // update adjusts diff
+        : lastKnownPoints - pts;
+      updateDashboardUser(localStorage.getItem("currentUsername") || "", Math.max(0, immediatePoints));
+      lastKnownPoints = Math.max(0, immediatePoints);
+    }
+
+    // Reload match cards (cache busted so my-predicted-matches returns fresh data)
     await loadMatches(true);
-    // Then refresh points — leaderboard already has fresh data from loadMatches flow
+
+    // Then sync real points from server and update leaderboard
     lastKnownPoints = null;
     await Promise.all([refreshUserData(), loadLeaderboard()]);
 
