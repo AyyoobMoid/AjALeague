@@ -18,6 +18,7 @@ const API = "/api";
 let lastKnownPoints = null;
 let lastKnownRank = null;
 let predictedMatches = []; // module-level so confirmBet can update it immediately
+let suppressNextPointsNotification = false;
 let cachedMatches = [];    // cached match list for re-renders without re-fetching
 let refreshInterval = null;
 
@@ -135,15 +136,31 @@ function getRank(points) {
 
 function updateDashboardUser(username, points) {
   const rank = getRank(points);
+  const fmtPoints = Number(points).toLocaleString();
 
-  document.getElementById("dashboardUsername").innerText = username;
-  document.getElementById("dashboardPoints").innerText = points;
-  document.getElementById("dashboardRank").innerText = rank;
+  const setEl = (id, val) => { const el = document.getElementById(id); if (el) el.innerText = val; };
 
-  document.getElementById("heroUsername").innerText = username;
-  document.getElementById("heroPoints").innerText = points;
-  document.getElementById("heroRank").innerText = rank;
-  document.getElementById("quickRank").innerText = rank;
+  if (username) {
+    setEl("dashboardUsername", username);
+    setEl("heroUsername", username);
+  }
+  setEl("dashboardPoints", fmtPoints);
+  setEl("dashboardRank", rank);
+  setEl("heroPoints", fmtPoints);
+  setEl("heroRank", rank);
+  setEl("quickRank", rank);
+}
+
+// Updates just the points number everywhere, no username needed
+function setPointsDisplay(points) {
+  const fmtPoints = Number(points).toLocaleString();
+  const rank = getRank(points);
+  const setEl = (id, val) => { const el = document.getElementById(id); if (el) el.innerText = val; };
+  setEl("dashboardPoints", fmtPoints);
+  setEl("heroPoints", fmtPoints);
+  setEl("dashboardRank", rank);
+  setEl("heroRank", rank);
+  setEl("quickRank", rank);
 }
 
 function getDeviceId() {
@@ -241,6 +258,7 @@ async function login() {
 
     loadProfileStats();
     hideAllDashboardSections();
+    showRecentResults();
 
     if (refreshInterval) {
       clearInterval(refreshInterval);
@@ -742,13 +760,14 @@ async function refreshUserData() {
     if (data.points !== undefined) {
       const newRank = getRank(data.points);
 
-      if (lastKnownPoints !== null && data.points > lastKnownPoints) {
+      if (!suppressNextPointsNotification && lastKnownPoints !== null && data.points > lastKnownPoints) {
         showNotification(`+${data.points - lastKnownPoints} points added!`);
       }
 
-      if (lastKnownPoints !== null && data.points < lastKnownPoints) {
+      if (!suppressNextPointsNotification && lastKnownPoints !== null && data.points < lastKnownPoints) {
         showNotification(`${lastKnownPoints - data.points} points used.`);
       }
+      suppressNextPointsNotification = false;
 
       if (lastKnownRank !== null && newRank !== lastKnownRank) {
         showNotification(`Rank updated: ${newRank}`);
@@ -1122,6 +1141,8 @@ async function confirmBet(matchId, isUpdate = false) {
   );
   if (!confirmed) return;
 
+  showLoadingOverlay(isUpdate ? "Updating bet..." : "Placing bet...");
+
   const endpoint = isUpdate ? `${API}/update-predict` : `${API}/predict`;
 
   const res = await fetch(endpoint, {
@@ -1131,6 +1152,7 @@ async function confirmBet(matchId, isUpdate = false) {
   });
 
   const data = await res.json();
+  hideLoadingOverlay();
   if (res.ok) {
     playPredictSound();
     const betMsg = isUpdate ? "Bet updated!" : "Bet placed!";
@@ -1146,26 +1168,28 @@ async function confirmBet(matchId, isUpdate = false) {
     // ── OPTIMISTIC UI UPDATE ───────────────────────────────────────────────
     // We know the outcome — update everything immediately without waiting for fetches.
 
-    // 1. Update predictedMatches in memory so re-render shows the new bet immediately
+    // 1. Capture old stake BEFORE overwriting predictedMatches
     const existingIdx = predictedMatches.findIndex(p => p.match_id === matchId);
+    const oldStake = (isUpdate && existingIdx >= 0) ? predictedMatches[existingIdx].points_used : 0;
+
+    // 2. Update points display immediately using the captured old stake
+    if (lastKnownPoints !== null) {
+      const newPoints = lastKnownPoints + oldStake - pts;
+      lastKnownPoints = Math.max(0, newPoints);
+      setPointsDisplay(lastKnownPoints);
+    }
+
+    // 3. Now update predictedMatches in memory so re-render shows the new bet
     const newPrediction = { match_id: matchId, selected_team: bet.pick, points_used: pts, odds_used: bet.odds, created_at: new Date().toISOString() };
     if (existingIdx >= 0) predictedMatches[existingIdx] = newPrediction;
     else predictedMatches.push(newPrediction);
 
-    // 2. Update points display immediately
-    if (lastKnownPoints !== null) {
-      const oldStake = isUpdate ? (predictedMatches.find(p => p.match_id === matchId)?.points_used || pts) : 0;
-      const newPoints = isUpdate ? lastKnownPoints + oldStake - pts : lastKnownPoints - pts;
-      lastKnownPoints = Math.max(0, newPoints);
-      updateDashboardUser(localStorage.getItem("currentUsername") || "", lastKnownPoints);
-    }
-
-    // 3. Re-render match cards from cached data + updated predictedMatches (no fetch needed)
+    // 4. Re-render match cards from cached data + updated predictedMatches (no fetch)
     renderMatchCards(cachedMatches);
 
-    // 4. Sync from server in background to catch any discrepancy
-    lastKnownPoints = null;
-    Promise.all([refreshUserData(), loadLeaderboard(), loadMatches(true)]);
+    // 5. Sync from server in background to catch any discrepancy (suppress notification)
+    suppressNextPointsNotification = true;
+    Promise.all([refreshUserData(), loadLeaderboard()]);
 
   } else {
     alert(data.message || "Bet failed.");
@@ -1199,6 +1223,8 @@ async function cancelBet(matchId) {
   const token = localStorage.getItem("token");
   if (!confirm("Cancel your bet and get your points back?")) return;
 
+  showLoadingOverlay("Cancelling bet...");
+
   const res = await fetch(`${API}/cancel-predict`, {
     method: "POST",
     headers: { "Content-Type": "application/json", "Authorization": token },
@@ -1206,11 +1232,22 @@ async function cancelBet(matchId) {
   });
 
   const data = await res.json();
+  hideLoadingOverlay();
   if (res.ok) {
-    lastKnownPoints = null;
-    await refreshUserData();
+    // Optimistic: refund stake to display and remove prediction from memory
+    const idx = predictedMatches.findIndex(p => p.match_id === matchId);
+    if (idx >= 0) {
+      const refund = predictedMatches[idx].points_used;
+      if (lastKnownPoints !== null) {
+        lastKnownPoints = lastKnownPoints + refund;
+        setPointsDisplay(lastKnownPoints);
+      }
+      predictedMatches.splice(idx, 1);
+    }
     showNotification("Bet cancelled — points refunded!");
-    await Promise.all([loadMatches(true), loadLeaderboard()]);
+    renderMatchCards(cachedMatches);
+    suppressNextPointsNotification = true;
+    Promise.all([refreshUserData(), loadLeaderboard()]);
   } else {
     alert(data.message || "Could not cancel bet.");
   }
@@ -1332,9 +1369,98 @@ window.addEventListener("DOMContentLoaded", async () => {
     await loadLeaderboard();
     updateDashboardUser(data.username, data.points);
     refreshUserData();
+    showRecentResults();
 
   } catch (err) {
     showLogin();
   }
 });
 
+
+// ─── LOADING OVERLAY ─────────────────────────────────────────────────────────
+function showLoadingOverlay(text) {
+  let overlay = document.getElementById("loadingOverlay");
+  if (!overlay) {
+    overlay = document.createElement("div");
+    overlay.id = "loadingOverlay";
+    overlay.innerHTML = `
+      <div class="loading-spinner"></div>
+      <p id="loadingText">${text || "Loading..."}</p>
+    `;
+    document.body.appendChild(overlay);
+  } else {
+    document.getElementById("loadingText").innerText = text || "Loading...";
+    overlay.style.display = "flex";
+  }
+}
+
+function hideLoadingOverlay() {
+  const overlay = document.getElementById("loadingOverlay");
+  if (overlay) overlay.style.display = "none";
+}
+
+
+// ─── LOGIN RESULTS SUMMARY ───────────────────────────────────────────────────
+async function showRecentResults() {
+  const token = localStorage.getItem("token");
+  if (!token) return;
+
+  try {
+    const res = await fetch(`${API}/my-recent-results`, {
+      headers: { "Authorization": token }
+    });
+    const results = await res.json();
+
+    if (!results || results.length === 0) return;
+
+    // Build summary
+    const totalProfit = results.reduce((s, r) => s + r.profit, 0);
+    const wins = results.filter(r => r.won).length;
+
+    let html = `
+      <div class="results-modal-overlay" id="resultsModal" onclick="closeResultsModal(event)">
+        <div class="results-modal" onclick="event.stopPropagation()">
+          <h2>👋 Welcome back!</h2>
+          <p class="results-subtitle">Here's what happened while you were away:</p>
+          <div class="results-summary ${totalProfit >= 0 ? 'net-positive' : 'net-negative'}">
+            <span>${wins}/${results.length} correct</span>
+            <span>${totalProfit >= 0 ? '+' : ''}${totalProfit.toLocaleString()} pts net</span>
+          </div>
+          <div class="results-list">
+    `;
+
+    results.forEach(r => {
+      html += `
+        <div class="result-item ${r.won ? 'won' : 'lost'}">
+          <div class="result-match">${r.match}</div>
+          <div class="result-detail">
+            <span>Your pick: <strong>${r.pick}</strong> · Result: <strong>${r.result}</strong></span>
+            <span class="result-amount">${r.won ? '+' + r.payout.toLocaleString() : r.profit.toLocaleString()} pts</span>
+          </div>
+        </div>
+      `;
+    });
+
+    html += `
+          </div>
+          <button class="confirm-btn" onclick="closeResultsModal()">Got it!</button>
+        </div>
+      </div>
+    `;
+
+    const div = document.createElement("div");
+    div.innerHTML = html;
+    document.body.appendChild(div.firstElementChild);
+
+  } catch (err) {
+    console.log("Could not load recent results");
+  }
+}
+
+function closeResultsModal(event) {
+  if (event && event.target.id !== "resultsModal" && event.type === "click") {
+    // only close on overlay click or button
+  }
+  const modal = document.getElementById("resultsModal");
+  if (modal) modal.remove();
+}
