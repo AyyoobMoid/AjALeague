@@ -252,8 +252,7 @@ app.get("/api/my-predicted-matches", auth, (req, res) => {
 
 app.get("/api/my-stats", auth, (req, res) => {
   db.all(
-    `SELECT predictions.selected_team, predictions.points_used, predictions.settled,
-            matches.result, matches.team_a, matches.team_b
+    `SELECT predictions.selected_team, predictions.points_used, predictions.settled, matches.result
      FROM predictions
      JOIN matches ON predictions.match_id = matches.id
      WHERE predictions.user_id = ?`,
@@ -267,15 +266,11 @@ app.get("/api/my-stats", auth, (req, res) => {
         totalPointsUsed += item.points_used;
         if (!item.settled || !item.result) {
           pending++;
+        } else if (item.selected_team === item.result) {
+          correct++;
+          if (item.result === "DRAW") draws++;
         } else {
-          const isNTL_a = item.selected_team === "NTL_a";
-          const isNTL_b = item.selected_team === "NTL_b";
-          let isCorrect = false;
-          if (isNTL_a) isCorrect = item.result === item.team_a || item.result === "DRAW";
-          else if (isNTL_b) isCorrect = item.result === item.team_b || item.result === "DRAW";
-          else isCorrect = item.selected_team === item.result;
-          if (isCorrect) { correct++; if (item.result === "DRAW") draws++; }
-          else losses++;
+          losses++;
         }
       });
 
@@ -316,15 +311,8 @@ function settleMatch(matchId, result, callback) {
           predictions.forEach((prediction) => {
             let reward = 0;
             const isWin = prediction.selected_team === result;
-            // NTL bets: NTL_a pays if team_a wins OR draws; NTL_b pays if team_b wins OR draws
-            const isNTL_a = prediction.selected_team === "NTL_a";
-            const isNTL_b = prediction.selected_team === "NTL_b";
-            let isCorrect = false;
-            if (isNTL_a) isCorrect = result === match.team_a || result === "DRAW";
-            else if (isNTL_b) isCorrect = result === match.team_b || result === "DRAW";
-            else isCorrect = prediction.selected_team === result;
-
-            if (isCorrect) {
+            // Only pay if pick exactly matches result
+            if (prediction.selected_team === result) {
               const odds = prediction.odds_used ? parseFloat(prediction.odds_used) : null;
               if (odds) reward = Math.floor(prediction.points_used * odds);
             }
@@ -649,16 +637,10 @@ app.get("/api/user-profile/:username", auth, (req, res) => {
 
           let wins = 0;
           predictions.forEach((p) => {
-            if (!p.result || !p.settled) return;
-            const isNTL_a = p.selected_team === "NTL_a";
-            const isNTL_b = p.selected_team === "NTL_b";
-            if (isNTL_a) { if (p.result === p.team_a || p.result === "DRAW") wins++; }
-            else if (isNTL_b) { if (p.result === p.team_b || p.result === "DRAW") wins++; }
-            else if (p.selected_team === p.result) wins++;
+            if (p.result && p.selected_team === p.result) wins++;
           });
 
-          const settled = predictions.filter(p => p.result && p.settled).length;
-          const successRate = settled > 0 ? Math.round((wins / settled) * 100) : 0;
+          const successRate = predictions.length > 0 ? Math.round((wins / predictions.length) * 100) : 0;
           res.json({
             username: user.username, fullName: user.full_name, roomNumber: user.room_number,
             country: user.country, joined: user.created_at, points: user.points,
@@ -940,7 +922,7 @@ app.get("/api/house-total", (req, res) => {
   db.all(
     `SELECT predictions.points_used, predictions.odds_used, predictions.settled,
             predictions.selected_team, matches.result, matches.odds_a, matches.odds_b,
-            matches.odds_draw, matches.team_a, matches.team_b
+            matches.odds_draw, matches.team_a
      FROM predictions
      JOIN matches ON predictions.match_id = matches.id
      WHERE predictions.settled = 1`,
@@ -951,13 +933,7 @@ app.get("/api/house-total", (req, res) => {
       let houseTotal = 0;
       rows.forEach(p => {
         const staked = p.points_used;
-        const isNTL_a = p.selected_team === "NTL_a";
-        const isNTL_b = p.selected_team === "NTL_b";
-        let isCorrect = false;
-        if (isNTL_a) isCorrect = p.result === p.team_a || p.result === "DRAW";
-        else if (isNTL_b) isCorrect = p.result === p.team_b || p.result === "DRAW";
-        else isCorrect = p.selected_team === p.result;
-
+        const isCorrect = p.selected_team === p.result;
         const odds = parseFloat(p.odds_used) || null;
         const payout = isCorrect && odds ? Math.floor(staked * odds) : 0;
         houseTotal += staked - payout;
