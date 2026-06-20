@@ -17,6 +17,8 @@ const API = "/api";
 
 let lastKnownPoints = null;
 let lastKnownRank = null;
+let predictedMatches = []; // module-level so confirmBet can update it immediately
+let cachedMatches = [];    // cached match list for re-renders without re-fetching
 let refreshInterval = null;
 
 function showPending() {
@@ -365,19 +367,27 @@ async function loadMatches(bustCache = false) {
   showSkeleton("matches", 3);
   try {
     const cacheBust = bustCache ? `?t=${Date.now()}` : '';
-    const res = await fetch(`${API}/matches${cacheBust}`);
-    const data = await res.json();
 
+    // Always fetch fresh match list and predictions in parallel
     const token = localStorage.getItem("token");
-    let predictedMatches = [];
+    const fetches = [fetch(`${API}/matches${cacheBust}`)];
+    if (token) fetches.push(fetch(`${API}/my-predicted-matches?t=${Date.now()}`, { headers: { "Authorization": token } }));
 
-    if (token) {
-      const predictedRes = await fetch(`${API}/my-predicted-matches${bustCache ? `?t=${Date.now()}` : ''}`, {
-        headers: { "Authorization": token }
-      });
-      predictedMatches = await predictedRes.json();
-    }
+    const results = await Promise.all(fetches);
+    const data = await results[0].json();
+    if (results[1]) predictedMatches = await results[1].json();
 
+    cachedMatches = data;
+
+    renderMatchCards(data);
+
+  } catch (error) {
+    const box = document.getElementById("matches");
+    if (box) box.innerHTML = "<p>Could not load matches. Please try again.</p>";
+  }
+}
+
+function renderMatchCards(data) {
     const box = document.getElementById("matches");
     box.innerHTML = "";
 
@@ -645,9 +655,6 @@ if (match.result) {
       `;
     });
 
-  } catch (error) {
-    console.log("Matches failed", error);
-  }
 }
 
 async function loadPredictionHistory() {
@@ -1129,28 +1136,36 @@ async function confirmBet(matchId, isUpdate = false) {
     const betMsg = isUpdate ? "Bet updated!" : "Bet placed!";
     showNotification(betMsg + " " + bet.pick + " @ " + bet.odds + "x for " + pts.toLocaleString() + " pts");
 
-    // Clear bet slip state
+    // Clear bet slip state immediately
     const slip = document.getElementById("bet-slip-" + matchId);
     if (slip) slip.classList.add("hidden");
     const input = document.getElementById("points-" + matchId);
     if (input) input.value = "";
     delete activeBet[matchId];
 
-    // Immediately update points display — we know exactly what was deducted
+    // ── OPTIMISTIC UI UPDATE ───────────────────────────────────────────────
+    // We know the outcome — update everything immediately without waiting for fetches.
+
+    // 1. Update predictedMatches in memory so re-render shows the new bet immediately
+    const existingIdx = predictedMatches.findIndex(p => p.match_id === matchId);
+    const newPrediction = { match_id: matchId, selected_team: bet.pick, points_used: pts, odds_used: bet.odds, created_at: new Date().toISOString() };
+    if (existingIdx >= 0) predictedMatches[existingIdx] = newPrediction;
+    else predictedMatches.push(newPrediction);
+
+    // 2. Update points display immediately
     if (lastKnownPoints !== null) {
-      const immediatePoints = isUpdate
-        ? lastKnownPoints - (pts - (data.oldStake || pts)) // update adjusts diff
-        : lastKnownPoints - pts;
-      updateDashboardUser(localStorage.getItem("currentUsername") || "", Math.max(0, immediatePoints));
-      lastKnownPoints = Math.max(0, immediatePoints);
+      const oldStake = isUpdate ? (predictedMatches.find(p => p.match_id === matchId)?.points_used || pts) : 0;
+      const newPoints = isUpdate ? lastKnownPoints + oldStake - pts : lastKnownPoints - pts;
+      lastKnownPoints = Math.max(0, newPoints);
+      updateDashboardUser(localStorage.getItem("currentUsername") || "", lastKnownPoints);
     }
 
-    // Reload match cards (cache busted so my-predicted-matches returns fresh data)
-    await loadMatches(true);
+    // 3. Re-render match cards from cached data + updated predictedMatches (no fetch needed)
+    renderMatchCards(cachedMatches);
 
-    // Then sync real points from server and update leaderboard
+    // 4. Sync from server in background to catch any discrepancy
     lastKnownPoints = null;
-    await Promise.all([refreshUserData(), loadLeaderboard()]);
+    Promise.all([refreshUserData(), loadLeaderboard(), loadMatches(true)]);
 
   } else {
     alert(data.message || "Bet failed.");
