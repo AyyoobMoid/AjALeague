@@ -482,7 +482,7 @@ if (match.result) {
 
   <div class="prediction-box">
     <div class="bet-status-bar">
-      <p>✅ Current bet: <strong>${userPrediction.selected_team === 'NTL_a' ? match.team_a + ' or Draw 🛡' : userPrediction.selected_team === 'NTL_b' ? match.team_b + ' or Draw 🛡' : userPrediction.selected_team}</strong> · <strong>${userPrediction.points_used.toLocaleString()} pts</strong>${lockedOdds ? ` @ <strong>${lockedOdds.toFixed(2)}x</strong>` : ''}</p>
+      <p>✅ Current bet: <strong>${userPrediction.selected_team}</strong> · <strong>${userPrediction.points_used.toLocaleString()} pts</strong>${lockedOdds ? ` @ <strong>${lockedOdds.toFixed(2)}x</strong>` : ''}</p>
       ${lockedOdds ? `<p style="font-size:0.82rem;color:#22c55e;">Locked payout if correct: ${lockedPayout.toLocaleString()} pts</p>` : ''}
       ${oddsChanged
         ? `<div class="odds-change-notice">
@@ -509,19 +509,6 @@ if (match.result) {
         <span class="bet-team">${match.team_b}</span>
         <span class="bet-odds">${match.odds_b ? parseFloat(match.odds_b).toFixed(2) + 'x' : '2.00x'}</span>
       </button>
-    </div>
-    <div class="ntl-options">
-      <p style="font-size:0.78rem;color:#aaa;margin:6px 0 4px;">🛡 Not to Lose (double chance):</p>
-      <div style="display:flex;gap:8px;">
-        <button class="bet-btn ntl-btn ${userPrediction.selected_team === 'NTL_a' ? 'bet-btn-active' : ''}" onclick="selectBet(${match.id}, 'NTL_a', ${(match.odds_a && match.odds_draw) ? Math.round(10000 / (10000/match.odds_a + 10000/match.odds_draw)) / 100 : 1.1})">
-          <span class="bet-team" style="font-size:0.8rem;">${match.team_a} or Draw</span>
-          <span class="bet-odds">${(match.odds_a && match.odds_draw) ? (Math.round(10000 / (10000/match.odds_a + 10000/match.odds_draw)) / 100).toFixed(2) + 'x' : '—'}</span>
-        </button>
-        <button class="bet-btn ntl-btn ${userPrediction.selected_team === 'NTL_b' ? 'bet-btn-active' : ''}" onclick="selectBet(${match.id}, 'NTL_b', ${(match.odds_b && match.odds_draw) ? Math.round(10000 / (10000/match.odds_b + 10000/match.odds_draw)) / 100 : 1.1})">
-          <span class="bet-team" style="font-size:0.8rem;">${match.team_b} or Draw</span>
-          <span class="bet-odds">${(match.odds_b && match.odds_draw) ? (Math.round(10000 / (10000/match.odds_b + 10000/match.odds_draw)) / 100).toFixed(2) + 'x' : '—'}</span>
-        </button>
-      </div>
     </div>
     <div id="bet-slip-${match.id}" class="bet-slip hidden">
       <p class="bet-slip-preview" id="bet-preview-${match.id}"></p>
@@ -572,19 +559,6 @@ if (match.result) {
         <span class="bet-team">${match.team_b}</span>
         <span class="bet-odds">${match.odds_b ? parseFloat(match.odds_b).toFixed(2) + 'x' : '2.00x'}</span>
       </button>
-    </div>
-    <div class="ntl-options">
-      <p style="font-size:0.78rem;color:#aaa;margin:6px 0 4px;">🛡 Not to Lose (double chance):</p>
-      <div style="display:flex;gap:8px;">
-        <button class="bet-btn ntl-btn" onclick="selectBet(${match.id}, 'NTL_a', ${(match.odds_a && match.odds_draw) ? Math.round(10000 / (10000/match.odds_a + 10000/match.odds_draw)) / 100 : 1.1})">
-          <span class="bet-team" style="font-size:0.8rem;">${match.team_a} or Draw</span>
-          <span class="bet-odds">${(match.odds_a && match.odds_draw) ? (Math.round(10000 / (10000/match.odds_a + 10000/match.odds_draw)) / 100).toFixed(2) + 'x' : '—'}</span>
-        </button>
-        <button class="bet-btn ntl-btn" onclick="selectBet(${match.id}, 'NTL_b', ${(match.odds_b && match.odds_draw) ? Math.round(10000 / (10000/match.odds_b + 10000/match.odds_draw)) / 100 : 1.1})">
-          <span class="bet-team" style="font-size:0.8rem;">${match.team_b} or Draw</span>
-          <span class="bet-odds">${(match.odds_b && match.odds_draw) ? (Math.round(10000 / (10000/match.odds_b + 10000/match.odds_draw)) / 100).toFixed(2) + 'x' : '—'}</span>
-        </button>
-      </div>
     </div>
     <div id="bet-slip-${match.id}" class="bet-slip hidden">
       <p class="bet-slip-preview" id="bet-preview-${match.id}"></p>
@@ -704,17 +678,9 @@ async function loadPredictionHistory() {
         day: "2-digit", month: "short", year: "numeric", timeZone: "Asia/Dubai"
       });
 
-      const isNTL_a = item.selected_team === "NTL_a";
-      const isNTL_b = item.selected_team === "NTL_b";
-      const isNTL = isNTL_a || isNTL_b;
-      let isCorrect = false;
-      if (item.settled && item.result) {
-        if (isNTL_a) isCorrect = item.result === item.team_a || item.result === "DRAW";
-        else if (isNTL_b) isCorrect = item.result === item.team_b || item.result === "DRAW";
-        else isCorrect = item.selected_team === item.result;
-      }
+      const isCorrect = item.settled && item.result && item.selected_team === item.result;
       const isWrong = item.settled && item.result && !isCorrect;
-      const pickLabel = isNTL_a ? (item.team_a + " or Draw 🛡") : isNTL_b ? (item.team_b + " or Draw 🛡") : item.selected_team;
+      const pickLabel = item.selected_team;
       const isPending = !item.settled || !item.result;
 
       const odds = item.odds_used ? parseFloat(item.odds_used) : null;
@@ -741,7 +707,7 @@ async function loadPredictionHistory() {
         <div class="match-item">
           <h4>${item.team_a} vs ${item.team_b}</h4>
           <p style="font-size:0.82rem;color:#aaa;">${item.stage}${item.group_name ? " · " + item.group_name : ""} · ${matchDate}</p>
-          <p>Pick: <strong>${pickLabel}</strong> · Staked: <strong>${item.points_used.toLocaleString()} pts</strong>${odds ? ` · Odds: <strong>${odds.toFixed(2)}x</strong>` : ""}</p>
+          <p>Pick: <strong>${item.selected_team}</strong> · Staked: <strong>${item.points_used.toLocaleString()} pts</strong>${odds ? ` · Odds: <strong>${odds.toFixed(2)}x</strong>` : ""}</p>
           ${item.result ? `<p style="color:#aaa;font-size:0.82rem;">Result: ${item.result}</p>` : ""}
           ${payoutLine}
           <p style="color:${statusColor};font-weight:bold;">${statusText}</p>
@@ -1043,22 +1009,15 @@ async function showUserHistory(username) {
     }
 
     listBox.innerHTML = history.map(item => {
-      const isNTL_a_m = item.selected_team === "NTL_a";
-      const isNTL_b_m = item.selected_team === "NTL_b";
-      let isCorrect = false;
-      if (item.result) {
-        if (isNTL_a_m) isCorrect = item.result === item.team_a || item.result === "DRAW";
-        else if (isNTL_b_m) isCorrect = item.result === item.team_b || item.result === "DRAW";
-        else isCorrect = item.selected_team === item.result;
-      }
+      const isCorrect = item.selected_team === item.result;
       const isDraw = item.result === "DRAW";
-      const pickLabelM = isNTL_a_m ? (item.team_a + " or Draw 🛡") : isNTL_b_m ? (item.team_b + " or Draw 🛡") : item.selected_team;
+      const pickLabelM = item.selected_team;
       let color = "#ef4444";
       let label = "❌ Wrong";
 
       if (isCorrect) {
         color = "#22c55e";
-        label = "✅ Correct";
+        label = isDraw ? "✅ Correct (Draw)" : "✅ Correct";
       }
 
       const odds = item.odds_used ? parseFloat(item.odds_used) : null;
@@ -1073,7 +1032,7 @@ async function showUserHistory(username) {
         <div class="match-item">
           <h4>${item.team_a} vs ${item.team_b}</h4>
           <p style="font-size:0.82rem;color:#aaa;">${item.stage}${item.group_name ? " · " + item.group_name : ""} · ${matchDate}</p>
-          <p>Pick: <strong>${pickLabelM}</strong> · ${item.points_used.toLocaleString()} pts${odds ? ` @ ${odds.toFixed(2)}x` : ""}</p>
+          <p>Pick: <strong>${item.selected_team}</strong> · ${item.points_used.toLocaleString()} pts${odds ? ` @ ${odds.toFixed(2)}x` : ""}</p>
           <p style="color:#aaa;font-size:0.82rem;">Result: ${item.result}</p>
           ${isCorrect
             ? `<p style="color:#22c55e;font-weight:bold;">Won ${payout.toLocaleString()} pts (+${profit.toLocaleString()} profit)</p>`
@@ -1113,15 +1072,11 @@ function selectBet(matchId, pick, odds) {
 
   // Don't clear points if already filled (switching teams on existing bet preserves stake)
   const pointsInput = document.getElementById("points-" + matchId);
-  const displayPick = pick === "NTL_a" || pick === "NTL_b"
-    ? (pick === "NTL_a" ? "Team 1 or Draw" : "Team 2 or Draw")
-    : pick;
-
   const preview = document.getElementById("bet-preview-" + matchId);
   if (pointsInput.value && parseInt(pointsInput.value) > 0) {
     updateBetPreview(matchId);
   } else {
-    preview.innerText = "Pick: " + displayPick + " @ " + odds + "x — enter points to see payout";
+    preview.innerText = "Pick: " + pick + " @ " + odds + "x — enter points to see payout";
   }
 }
 
@@ -1133,15 +1088,11 @@ function updateBetPreview(matchId) {
   const payout = Math.floor(pts * bet.odds);
   const profit = payout - pts;
 
-  const displayPick = bet.pick === "NTL_a" ? "Team 1 or Draw (not to lose)"
-    : bet.pick === "NTL_b" ? "Team 2 or Draw (not to lose)"
-    : bet.pick;
-
   const preview = document.getElementById("bet-preview-" + matchId);
   if (pts <= 0) {
-    preview.innerText = "Pick: " + displayPick + " @ " + bet.odds + "x";
+    preview.innerText = "Pick: " + bet.pick + " @ " + bet.odds + "x";
   } else {
-    preview.innerText = "Pick: " + displayPick + " @ " + bet.odds + "x — Bet " + pts.toLocaleString() + " pts → Win " + payout.toLocaleString() + " pts (+" + profit.toLocaleString() + " profit)";
+    preview.innerText = "Pick: " + bet.pick + " @ " + bet.odds + "x — Bet " + pts.toLocaleString() + " pts → Win " + payout.toLocaleString() + " pts (+" + profit.toLocaleString() + " profit)";
   }
 }
 
