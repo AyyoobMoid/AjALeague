@@ -950,15 +950,16 @@ app.get("/api/house-total", (req, res) => {
 
 app.get("/api/my-recent-results", auth, (req, res) => {
   res.set("Cache-Control", "no-store");
+  const since = req.query.since ? new Date(req.query.since).toISOString() : new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
   db.all(
     `SELECT predictions.selected_team, predictions.points_used, predictions.odds_used,
             matches.team_a, matches.team_b, matches.result, matches.settled_at
      FROM predictions
      JOIN matches ON predictions.match_id = matches.id
      WHERE predictions.user_id = ? AND predictions.settled = 1
-       AND matches.settled_at > NOW() - INTERVAL '24 hours'
+       AND matches.settled_at > ?
      ORDER BY matches.settled_at DESC`,
-    [req.user.id],
+    [req.user.id, since],
     (err, rows) => {
       if (err) return res.status(500).json({ message: "Could not load recent results" });
 
