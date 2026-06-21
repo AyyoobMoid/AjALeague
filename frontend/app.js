@@ -153,14 +153,13 @@ function updateDashboardUser(username, points) {
 
 // Updates just the points number everywhere, no username needed
 function setPointsDisplay(points) {
+  // Updates only the points NUMBER, not the rank tier.
+  // Rank is based on net worth (cash + staked), which doesn't change when betting —
+  // money just moves from cash to stake. Rank refreshes when the leaderboard reloads.
   const fmtPoints = Number(points).toLocaleString();
-  const rank = getRank(points);
   const setEl = (id, val) => { const el = document.getElementById(id); if (el) el.innerText = val; };
   setEl("dashboardPoints", fmtPoints);
   setEl("heroPoints", fmtPoints);
-  setEl("dashboardRank", rank);
-  setEl("heroRank", rank);
-  setEl("quickRank", rank);
 }
 
 function getDeviceId() {
