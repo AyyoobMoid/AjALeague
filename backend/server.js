@@ -453,6 +453,36 @@ async function autoSettleMatches() {
 
 // ─── ODDS FETCHING ────────────────────────────────────────────────────────────
 
+// ─── OVERROUND NORMALIZATION ─────────────────────────────────────────────────
+// Takes raw average odds and re-scales them so the implied probabilities sum to
+// the target book (e.g. 1.03 = 103%). This guarantees a fixed house margin and
+// eliminates arbitrage (where the fair odds would sum under 100%).
+function applyOverround(oddsHome, oddsDraw, oddsAway, targetBook = 1.03) {
+  // If any odds missing, return as-is (can't normalize a partial book)
+  if (!oddsHome || !oddsDraw || !oddsAway) {
+    return { home: oddsHome, draw: oddsDraw, away: oddsAway };
+  }
+
+  // Convert to implied probabilities
+  const pHome = 1 / oddsHome;
+  const pDraw = 1 / oddsDraw;
+  const pAway = 1 / oddsAway;
+  const currentBook = pHome + pDraw + pAway;
+
+  // Scale each probability so they sum to targetBook
+  const scale = targetBook / currentBook;
+  const newPHome = pHome * scale;
+  const newPDraw = pDraw * scale;
+  const newPAway = pAway * scale;
+
+  // Convert back to odds, round to 2 decimals
+  return {
+    home: Math.round((1 / newPHome) * 100) / 100,
+    draw: Math.round((1 / newPDraw) * 100) / 100,
+    away: Math.round((1 / newPAway) * 100) / 100
+  };
+}
+
 async function fetchAndStoreOdds() {
   try {
     const fetch = require("node-fetch");
@@ -512,10 +542,15 @@ async function fetchAndStoreOdds() {
         }
         const oddsDraw = avg(drawOdds);
 
+        // ── OVERROUND NORMALIZATION (target 103% book) ──────────────────────
+        // Re-scale odds so implied probabilities sum to exactly 1.03, giving a
+        // consistent 3% house margin and removing any arbitrage opportunity.
+        const normalized = applyOverround(oddsHome, oddsDraw, oddsAway, 1.03);
+
         db.run(
           "UPDATE matches SET odds_a = ?, odds_draw = ?, odds_b = ? WHERE id = ?",
-          [oddsHome, oddsDraw, oddsAway, dbMatch.id],
-          () => console.log(`Odds updated: ${dbMatch.team_a} vs ${dbMatch.team_b} | ${oddsHome} / ${oddsDraw} / ${oddsAway}`)
+          [normalized.home, normalized.draw, normalized.away, dbMatch.id],
+          () => console.log(`Odds updated: ${dbMatch.team_a} vs ${dbMatch.team_b} | ${normalized.home} / ${normalized.draw} / ${normalized.away}`)
         );
       });
     });
@@ -998,7 +1033,6 @@ app.get("/api/my-recent-results", auth, (req, res) => {
         const odds = r.odds_used ? parseFloat(r.odds_used) : null;
         const payout = isCorrect && odds ? Math.floor(r.points_used * odds) : 0;
         return {
-          matchId: r.match_id,
           match: `${r.team_a} vs ${r.team_b}`,
           pick: r.selected_team,
           odds: r.odds_used,
