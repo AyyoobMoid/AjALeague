@@ -2065,3 +2065,35 @@ button:hover::after {
 .result-amount { font-weight: bold; white-space: nowrap; }
 .amount-won { color: #22c55e; }
 .amount-lost { color: #ef4444; }
+
+/* ─── REVISED RULES BOX ──────────────────────────────────────────────────── */
+.rules-section {
+  margin: 0;
+}
+
+.rules-line {
+  margin: 0.4rem 0;
+  font-size: 0.9rem;
+  line-height: 1.5;
+  color: #ddd;
+}
+
+.rules-subhead {
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #ffd600;
+  font-weight: bold;
+  margin: 0 0 0.5rem;
+  opacity: 0.85;
+}
+
+.rules-divider {
+  height: 1px;
+  background: linear-gradient(to right, transparent, rgba(255,214,0,0.25), transparent);
+  margin: 1rem 0;
+}
+
+.gold-text {
+  color: #ffd600;
+}
