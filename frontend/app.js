@@ -929,6 +929,11 @@ document.getElementById("quickSuccessRate").innerText = `${data.successRate}%`;
       </div>
 
       <div class="dash-card">
+        <h3>ROI</h3>
+        <p style="color:${data.roi !== null ? (parseFloat(data.roi) >= 0 ? '#22c55e' : '#ef4444') : '#aaa'}">${data.roi !== null ? (parseFloat(data.roi) >= 0 ? '+' : '') + data.roi + '%' : '—'}</p>
+      </div>
+
+      <div class="dash-card">
         <h3>Pending</h3>
         <p>${data.pending}</p>
       </div>
@@ -1028,11 +1033,24 @@ async function showUserHistory(username) {
     const rate = settled > 0 ? Math.round((wins / settled) * 100) : 0;
     const rrRatio = totalStakeRR > 0 ? (totalPotProfit / totalStakeRR).toFixed(2) : null;
 
+    // ROI from settled bets in history
+    let totalReturned = 0, totalSettledStake = 0;
+    history.forEach(h => {
+      totalSettledStake += h.points_used;
+      if (h.selected_team === h.result && h.odds_used > 0) {
+        totalReturned += Math.floor(h.points_used * parseFloat(h.odds_used));
+      }
+    });
+    const roiVal = totalSettledStake > 0
+      ? ((totalReturned - totalSettledStake) / totalSettledStake * 100).toFixed(1)
+      : null;
+
     statBox.innerHTML = `
       <div class="user-history-summary">
         <span>✅ ${wins} correct</span>
         <span>❌ ${losses} wrong</span>
         <span>📊 R:R ${rrRatio ? rrRatio + ':1' : '—'}</span>
+        <span style="color:${roiVal !== null ? (parseFloat(roiVal) >= 0 ? '#22c55e' : '#ef4444') : '#aaa'}">💹 ROI ${roiVal !== null ? (parseFloat(roiVal) >= 0 ? '+' : '') + roiVal + '%' : '—'}</span>
         <span>🎯 ${rate}% accuracy</span>
         <span>💰 ${user.points} pts</span>
       </div>
