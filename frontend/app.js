@@ -924,6 +924,11 @@ document.getElementById("quickSuccessRate").innerText = `${data.successRate}%`;
       </div>
 
       <div class="dash-card">
+        <h3>Risk:Reward</h3>
+        <p>${data.rrRatio !== null ? data.rrRatio + ':1' : '—'}</p>
+      </div>
+
+      <div class="dash-card">
         <h3>Pending</h3>
         <p>${data.pending}</p>
       </div>
@@ -1006,6 +1011,7 @@ async function showUserHistory(username) {
 
     // Stats summary
     let wins = 0, losses = 0, draws = 0;
+    let totalPotProfit = 0, totalStakeRR = 0;
     history.forEach(h => {
       if (h.selected_team === h.result) {
         wins++;
@@ -1013,15 +1019,20 @@ async function showUserHistory(username) {
       } else {
         losses++;
       }
+      if (h.odds_used && parseFloat(h.odds_used) > 0) {
+        totalPotProfit += (h.points_used * parseFloat(h.odds_used)) - h.points_used;
+        totalStakeRR += h.points_used;
+      }
     });
     const settled = wins + losses;
     const rate = settled > 0 ? Math.round((wins / settled) * 100) : 0;
+    const rrRatio = totalStakeRR > 0 ? (totalPotProfit / totalStakeRR).toFixed(2) : null;
 
     statBox.innerHTML = `
       <div class="user-history-summary">
         <span>✅ ${wins} correct</span>
         <span>❌ ${losses} wrong</span>
-        <span>🤝 ${draws} draws called</span>
+        <span>📊 R:R ${rrRatio ? rrRatio + ':1' : '—'}</span>
         <span>🎯 ${rate}% accuracy</span>
         <span>💰 ${user.points} pts</span>
       </div>
@@ -1411,21 +1422,28 @@ async function showRecentResults() {
   const token = localStorage.getItem("token");
   if (!token) return;
 
-  // Only show results settled after the last time the user dismissed this modal
-  const lastSeen = localStorage.getItem("resultsSeen") || "0";
+  // Load already-seen match IDs — mark as seen the moment modal shows, not on dismiss
+  const seenRaw = localStorage.getItem("seenResultIds") || "[]";
+  let seenIds = [];
+  try { seenIds = JSON.parse(seenRaw); } catch(e) { seenIds = []; }
+
+  const seenParam = seenIds.length > 0 ? `?seen=${seenIds.join(",")}` : "";
 
   try {
-    const res = await fetch(`${API}/my-recent-results?since=${lastSeen}`, {
+    const res = await fetch(`${API}/my-recent-results${seenParam}`, {
       headers: { "Authorization": token }
     });
     const results = await res.json();
     if (!results || results.length === 0) return;
 
+    // Mark these match IDs as seen IMMEDIATELY (before user even dismisses)
+    const newIds = [...new Set([...seenIds, ...results.map(r => r.matchId)])];
+    localStorage.setItem("seenResultIds", JSON.stringify(newIds));
+
     const totalProfit = results.reduce((s, r) => s + r.profit, 0);
     const wins = results.filter(r => r.won).length;
     const totalStaked = results.reduce((s, r) => s + r.stake, 0);
     const currentBalance = lastKnownPoints;
-
     const netColor = totalProfit >= 0 ? "#22c55e" : "#ef4444";
     const netSign = totalProfit >= 0 ? "+" : "";
 
@@ -1457,7 +1475,6 @@ async function showRecentResults() {
             <h2>👋 Welcome back!</h2>
             <p class="results-subtitle">${results.length} bet${results.length > 1 ? "s" : ""} settled while you were away</p>
           </div>
-
           <div class="results-net-bar" style="border-color:${netColor};background:${totalProfit >= 0 ? "rgba(34,197,94,0.1)" : "rgba(239,68,68,0.1)"};">
             <div class="results-net-row">
               <span style="color:#aaa;">Net result</span>
@@ -1468,9 +1485,7 @@ async function showRecentResults() {
               ${currentBalance ? `<span style="color:#ffd600;">Balance: ${currentBalance.toLocaleString()} pts</span>` : ""}
             </div>
           </div>
-
           <div class="results-list">${betsHtml}</div>
-
           <button class="confirm-btn" onclick="closeResultsModal()">Got it!</button>
         </div>
       </div>
@@ -1487,9 +1502,5 @@ async function showRecentResults() {
 
 function closeResultsModal() {
   const modal = document.getElementById("resultsModal");
-  if (modal) {
-    // Remember when they dismissed — only show new results after this point
-    localStorage.setItem("resultsSeen", Date.now().toString());
-    modal.remove();
-  }
+  if (modal) modal.remove();
 }
