@@ -246,6 +246,7 @@ async function login() {
     localStorage.setItem("token", data.token);
     localStorage.setItem("isAdmin", data.isAdmin ? "true" : "false");
     localStorage.setItem("currentUsername", data.username);
+    sessionStorage.removeItem("resultsShownThisSession"); // allow results to show on fresh login
 
     lastKnownPoints = data.points;
 
@@ -1440,10 +1441,13 @@ async function showRecentResults() {
   const token = localStorage.getItem("token");
   if (!token) return;
 
-  // Load already-seen match IDs — mark as seen the moment modal shows, not on dismiss
+  // Don't show again if already shown in this browser session (prevents refresh re-trigger)
+  if (sessionStorage.getItem("resultsShownThisSession")) return;
+
+  // Load already-seen match IDs
   const seenRaw = localStorage.getItem("seenResultIds") || "[]";
   let seenIds = [];
-  try { seenIds = JSON.parse(seenRaw); } catch(e) { seenIds = []; }
+  try { seenIds = JSON.parse(seenRaw).filter(id => typeof id === "number" && id > 0); } catch(e) { seenIds = []; }
 
   const seenParam = seenIds.length > 0 ? `?seen=${seenIds.join(",")}` : "";
 
@@ -1452,11 +1456,20 @@ async function showRecentResults() {
       headers: { "Authorization": token }
     });
     const results = await res.json();
-    if (!results || results.length === 0) return;
+    if (!results || results.length === 0) {
+      sessionStorage.setItem("resultsShownThisSession", "1");
+      return;
+    }
 
-    // Mark these match IDs as seen IMMEDIATELY (before user even dismisses)
-    const newIds = [...new Set([...seenIds, ...results.map(r => r.matchId)])];
-    localStorage.setItem("seenResultIds", JSON.stringify(newIds));
+    // Mark as shown for this session
+    sessionStorage.setItem("resultsShownThisSession", "1");
+
+    // Save match IDs immediately — use both matchId and match_id defensively
+    const newMatchIds = results.map(r => r.matchId || r.match_id).filter(id => id && id > 0);
+    if (newMatchIds.length > 0) {
+      const newIds = [...new Set([...seenIds, ...newMatchIds])];
+      localStorage.setItem("seenResultIds", JSON.stringify(newIds));
+    }
 
     const totalProfit = results.reduce((s, r) => s + r.profit, 0);
     const wins = results.filter(r => r.won).length;
