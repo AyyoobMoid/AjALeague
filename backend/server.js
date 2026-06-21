@@ -287,12 +287,27 @@ app.get("/api/my-stats", auth, (req, res) => {
       const settled = correct + losses;
       const successRate = settled > 0 ? Math.round((correct / settled) * 100) : 0;
 
-      // R:R = avg potential profit : avg stake — expressed as X:1
+      // R:R = avg potential profit : avg stake
       const rrRatio = totalStakeForRR > 0
         ? (totalPotentialProfit / totalStakeForRR).toFixed(2)
         : null;
 
-      res.json({ totalPredictions, correct, wins: correct, losses, pending, totalPointsUsed, successRate, rrRatio });
+      // ROI = (total returned - total staked) / total staked * 100 — settled bets only
+      // We need to compute this from rows
+      let totalReturned = 0, totalSettledStake = 0;
+      rows.forEach(item => {
+        if (item.settled && item.result) {
+          totalSettledStake += item.points_used;
+          if (item.selected_team === item.result && item.odds_used > 0) {
+            totalReturned += Math.floor(item.points_used * parseFloat(item.odds_used));
+          }
+        }
+      });
+      const roi = totalSettledStake > 0
+        ? ((totalReturned - totalSettledStake) / totalSettledStake * 100).toFixed(1)
+        : null;
+
+      res.json({ totalPredictions, correct, wins: correct, losses, pending, totalPointsUsed, successRate, rrRatio, roi });
     }
   );
 });
