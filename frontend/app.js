@@ -322,7 +322,7 @@ async function loadLeaderboard() {
     `;
 
     // Update percentile rank data
-    leaderboardPoints = data.map(u => u.points).sort((a, b) => b - a);
+    leaderboardPoints = data.map(u => Number(u.points)).sort((a, b) => b - a);
 
     const newRanks = {};
     data.forEach((user, index) => { newRanks[user.username] = index + 1; });
@@ -350,11 +350,11 @@ async function loadLeaderboard() {
 
           <div class="leader-info">
             <strong>#${currentRank} ${user.username}</strong>${rankArrow}
-            <small>${getRank(user.points)}${user.staked_points > 0 ? ` · ${user.staked_points.toLocaleString()} in play` : ''}</small>
+            <small>${getRank(user.points)}${Number(user.staked_points) > 0 ? ` · ${Number(user.staked_points).toLocaleString()} in play` : ''}</small>
           </div>
 
           <div class="leader-points">
-            ${user.points.toLocaleString()}
+            ${Number(user.points).toLocaleString()}
             <span>pts</span>
           </div>
         </div>
@@ -1066,7 +1066,7 @@ async function showUserHistory(username) {
         <span>📊 R:R ${rrRatio ? rrRatio + ':1' : '—'}</span>
         <span style="color:${roiVal !== null ? (parseFloat(roiVal) >= 0 ? '#22c55e' : '#ef4444') : '#aaa'}">💹 ROI ${roiVal !== null ? (parseFloat(roiVal) >= 0 ? '+' : '') + roiVal + '%' : '—'}</span>
         <span>🎯 ${rate}% accuracy</span>
-        <span>💰 ${user.points} pts</span>
+        <span>💰 ${Number(user.points).toLocaleString()} pts</span>
       </div>
     `;
 
