@@ -1373,6 +1373,7 @@ window.addEventListener("DOMContentLoaded", async () => {
     // Load leaderboard first so percentile ranks are accurate
     await loadLeaderboard();
     updateDashboardUser(data.username, data.points);
+    loadProfileStats();
     refreshUserData();
     showRecentResults();
 
@@ -1410,62 +1411,85 @@ async function showRecentResults() {
   const token = localStorage.getItem("token");
   if (!token) return;
 
+  // Only show results settled after the last time the user dismissed this modal
+  const lastSeen = localStorage.getItem("resultsSeen") || "0";
+
   try {
-    const res = await fetch(`${API}/my-recent-results`, {
+    const res = await fetch(`${API}/my-recent-results?since=${lastSeen}`, {
       headers: { "Authorization": token }
     });
     const results = await res.json();
-
     if (!results || results.length === 0) return;
 
-    // Build summary
     const totalProfit = results.reduce((s, r) => s + r.profit, 0);
     const wins = results.filter(r => r.won).length;
+    const totalStaked = results.reduce((s, r) => s + r.stake, 0);
+    const currentBalance = lastKnownPoints;
 
-    let html = `
-      <div class="results-modal-overlay" id="resultsModal" onclick="closeResultsModal(event)">
-        <div class="results-modal" onclick="event.stopPropagation()">
-          <h2>👋 Welcome back!</h2>
-          <p class="results-subtitle">Here's what happened while you were away:</p>
-          <div class="results-summary ${totalProfit >= 0 ? 'net-positive' : 'net-negative'}">
-            <span>${wins}/${results.length} correct</span>
-            <span>${totalProfit >= 0 ? '+' : ''}${totalProfit.toLocaleString()} pts net</span>
-          </div>
-          <div class="results-list">
-    `;
+    const netColor = totalProfit >= 0 ? "#22c55e" : "#ef4444";
+    const netSign = totalProfit >= 0 ? "+" : "";
 
+    let betsHtml = "";
     results.forEach(r => {
-      html += `
-        <div class="result-item ${r.won ? 'won' : 'lost'}">
-          <div class="result-match">${r.match}</div>
-          <div class="result-detail">
-            <span>Your pick: <strong>${r.pick}</strong> · Result: <strong>${r.result}</strong></span>
-            <span class="result-amount">${r.won ? '+' + r.payout.toLocaleString() : r.profit.toLocaleString()} pts</span>
+      const amountStr = r.won
+        ? `+${r.payout.toLocaleString()} pts`
+        : `${r.profit.toLocaleString()} pts`;
+      const oddsStr = r.odds ? ` @ ${parseFloat(r.odds).toFixed(2)}x` : "";
+      betsHtml += `
+        <div class="result-item ${r.won ? "won" : "lost"}">
+          <div class="result-match-row">
+            <span class="result-match-name">${r.match}</span>
+            <span class="result-badge ${r.won ? "badge-won" : "badge-lost"}">${r.won ? "✅ WON" : "❌ LOST"}</span>
           </div>
+          <div class="result-detail">
+            <span>Picked <strong>${r.pick}</strong>${oddsStr} · Result: <strong>${r.result}</strong></span>
+            <span class="result-amount ${r.won ? "amount-won" : "amount-lost"}">${amountStr}</span>
+          </div>
+          <div class="result-stake">Stake: ${r.stake.toLocaleString()} pts</div>
         </div>
       `;
     });
 
-    html += `
+    const html = `
+      <div class="results-modal-overlay" id="resultsModal">
+        <div class="results-modal">
+          <div class="results-header">
+            <h2>👋 Welcome back!</h2>
+            <p class="results-subtitle">${results.length} bet${results.length > 1 ? "s" : ""} settled while you were away</p>
           </div>
+
+          <div class="results-net-bar" style="border-color:${netColor};background:${totalProfit >= 0 ? "rgba(34,197,94,0.1)" : "rgba(239,68,68,0.1)"};">
+            <div class="results-net-row">
+              <span style="color:#aaa;">Net result</span>
+              <span style="color:${netColor};font-size:1.3rem;font-weight:900;">${netSign}${totalProfit.toLocaleString()} pts</span>
+            </div>
+            <div class="results-net-row" style="font-size:0.82rem;margin-top:4px;">
+              <span style="color:#aaa;">${wins}/${results.length} correct · ${totalStaked.toLocaleString()} staked</span>
+              ${currentBalance ? `<span style="color:#ffd600;">Balance: ${currentBalance.toLocaleString()} pts</span>` : ""}
+            </div>
+          </div>
+
+          <div class="results-list">${betsHtml}</div>
+
           <button class="confirm-btn" onclick="closeResultsModal()">Got it!</button>
         </div>
       </div>
     `;
 
     const div = document.createElement("div");
-    div.innerHTML = html;
+    div.innerHTML = html.trim();
     document.body.appendChild(div.firstElementChild);
 
   } catch (err) {
-    console.log("Could not load recent results");
+    console.log("Could not load recent results", err);
   }
 }
 
-function closeResultsModal(event) {
-  if (event && event.target.id !== "resultsModal" && event.type === "click") {
-    // only close on overlay click or button
-  }
+function closeResultsModal() {
   const modal = document.getElementById("resultsModal");
-  if (modal) modal.remove();
+  if (modal) {
+    // Remember when they dismissed — only show new results after this point
+    localStorage.setItem("resultsSeen", Date.now().toString());
+    modal.remove();
+  }
 }
