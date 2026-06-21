@@ -253,7 +253,8 @@ app.get("/api/my-predicted-matches", auth, (req, res) => {
 
 app.get("/api/my-stats", auth, (req, res) => {
   db.all(
-    `SELECT predictions.selected_team, predictions.points_used, predictions.settled, matches.result
+    `SELECT predictions.selected_team, predictions.points_used, predictions.odds_used,
+            predictions.settled, matches.result
      FROM predictions
      JOIN matches ON predictions.match_id = matches.id
      WHERE predictions.user_id = ?`,
@@ -261,15 +262,23 @@ app.get("/api/my-stats", auth, (req, res) => {
     (err, rows) => {
       if (err) return res.status(500).json({ message: "Could not load stats" });
 
-      let totalPredictions = rows.length, correct = 0, losses = 0, draws = 0, pending = 0, totalPointsUsed = 0;
+      let totalPredictions = rows.length, correct = 0, losses = 0, pending = 0, totalPointsUsed = 0;
+      let totalPotentialProfit = 0, totalStakeForRR = 0;
 
       rows.forEach((item) => {
         totalPointsUsed += item.points_used;
+
+        // R:R — potential profit vs stake, across ALL bets (not just settled)
+        if (item.odds_used && item.odds_used > 0) {
+          const potentialProfit = (item.points_used * parseFloat(item.odds_used)) - item.points_used;
+          totalPotentialProfit += potentialProfit;
+          totalStakeForRR += item.points_used;
+        }
+
         if (!item.settled || !item.result) {
           pending++;
         } else if (item.selected_team === item.result) {
           correct++;
-          if (item.result === "DRAW") draws++;
         } else {
           losses++;
         }
@@ -277,7 +286,13 @@ app.get("/api/my-stats", auth, (req, res) => {
 
       const settled = correct + losses;
       const successRate = settled > 0 ? Math.round((correct / settled) * 100) : 0;
-      res.json({ totalPredictions, correct, wins: correct, losses, draws, pending, totalPointsUsed, successRate });
+
+      // R:R = avg potential profit : avg stake — expressed as X:1
+      const rrRatio = totalStakeForRR > 0
+        ? (totalPotentialProfit / totalStakeForRR).toFixed(2)
+        : null;
+
+      res.json({ totalPredictions, correct, wins: correct, losses, pending, totalPointsUsed, successRate, rrRatio });
     }
   );
 });
@@ -968,8 +983,10 @@ app.get("/api/my-recent-results", auth, (req, res) => {
         const odds = r.odds_used ? parseFloat(r.odds_used) : null;
         const payout = isCorrect && odds ? Math.floor(r.points_used * odds) : 0;
         return {
+          matchId: r.match_id,
           match: `${r.team_a} vs ${r.team_b}`,
           pick: r.selected_team,
+          odds: r.odds_used,
           result: r.result,
           stake: r.points_used,
           won: isCorrect,
