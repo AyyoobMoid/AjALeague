@@ -180,29 +180,17 @@ app.post("/api/predict", auth, (req, res) => {
       }
 
       const oddsUsed = req.body.oddsUsed || null;
-      // Atomic: insert prediction AND deduct points together so leaderboard
-      // never sees the stake counted before the cash is deducted
-      db.serialize(() => {
-        db.run("BEGIN");
-        db.run(
-          "INSERT INTO predictions (user_id, match_id, selected_team, points_used, odds_used) VALUES (?, ?, ?, ?, ?)",
-          [req.user.id, matchId, selectedTeam, amount, oddsUsed],
-          function (err) {
-            if (err) {
-              db.run("ROLLBACK");
-              return res.status(400).json({ message: "You already predicted this match" });
-            }
-            db.run("UPDATE users SET points = points - ? WHERE id = ?", [amount, req.user.id], function (err) {
-              if (err) {
-                db.run("ROLLBACK");
-                return res.status(500).json({ message: "Prediction saved but points could not be updated" });
-              }
-              db.run("COMMIT");
-              return res.json({ message: "Prediction submitted successfully" });
-            });
-          }
-        );
-      });
+      db.run(
+        "INSERT INTO predictions (user_id, match_id, selected_team, points_used, odds_used) VALUES (?, ?, ?, ?, ?)",
+        [req.user.id, matchId, selectedTeam, amount, oddsUsed],
+        function (err) {
+          if (err) return res.status(400).json({ message: "You already predicted this match" });
+          db.run("UPDATE users SET points = points - ? WHERE id = ?", [amount, req.user.id], function (err) {
+            if (err) return res.status(500).json({ message: "Prediction saved but points could not be updated" });
+            return res.json({ message: "Prediction submitted successfully" });
+          });
+        }
+      );
     });
   });
 });
@@ -378,13 +366,8 @@ function settleMatch(matchId, result, callback) {
               if (odds) reward = Math.floor(prediction.points_used * odds);
             }
 
-            // Atomic: mark settled AND credit reward together so the leaderboard
-            // never counts the stake as in-play while the winnings are also credited
-            db.serialize(() => {
-              db.run("BEGIN");
-              db.run("UPDATE predictions SET settled = 1 WHERE id = ?", [prediction.id]);
-              db.run("UPDATE users SET points = points + ? WHERE id = ?", [reward, prediction.user_id]);
-              db.run("COMMIT", () => {
+            db.run("UPDATE users SET points = points + ? WHERE id = ?", [reward, prediction.user_id], () => {
+              db.run("UPDATE predictions SET settled = 1 WHERE id = ?", [prediction.id], () => {
                 completed++;
                 if (completed === predictions.length) {
                   db.run("UPDATE users SET is_active = 0 WHERE points <= 0", [], () => {
@@ -942,28 +925,17 @@ app.post("/api/update-predict", auth, (req, res) => {
         if (available < amount) return res.status(400).json({ message: "Not enough points" });
 
         const pointsDiff = amount - oldAmount;
-        // Atomic: update prediction AND adjust points together
-        db.serialize(() => {
-          db.run("BEGIN");
-          db.run(
-            "UPDATE predictions SET selected_team = ?, points_used = ?, odds_used = ? WHERE id = ?",
-            [selectedTeam, amount, oddsUsed, existing.id],
-            (err) => {
-              if (err) {
-                db.run("ROLLBACK");
-                return res.status(500).json({ message: "Could not update prediction" });
-              }
-              db.run("UPDATE users SET points = points - ? WHERE id = ?", [pointsDiff, req.user.id], (err) => {
-                if (err) {
-                  db.run("ROLLBACK");
-                  return res.status(500).json({ message: "Prediction updated but points could not be adjusted" });
-                }
-                db.run("COMMIT");
-                return res.json({ message: "Prediction updated successfully" });
-              });
-            }
-          );
-        });
+        db.run(
+          "UPDATE predictions SET selected_team = ?, points_used = ?, odds_used = ? WHERE id = ?",
+          [selectedTeam, amount, oddsUsed, existing.id],
+          (err) => {
+            if (err) return res.status(500).json({ message: "Could not update prediction" });
+            db.run("UPDATE users SET points = points - ? WHERE id = ?", [pointsDiff, req.user.id], (err) => {
+              if (err) return res.status(500).json({ message: "Prediction updated but points could not be adjusted" });
+              return res.json({ message: "Prediction updated successfully" });
+            });
+          }
+        );
       });
     });
   });
@@ -987,17 +959,10 @@ app.post("/api/cancel-predict", auth, (req, res) => {
         return res.status(400).json({ message: "Prediction window is closed" });
       }
 
-      // Atomic: refund points AND delete prediction in one transaction so the
-      // leaderboard never sees an inconsistent state (e.g. bet gone but not yet refunded)
-      db.serialize(() => {
-        db.run("BEGIN");
-        db.run("UPDATE users SET points = points + ? WHERE id = ?", [prediction.points_used, req.user.id]);
-        db.run("DELETE FROM predictions WHERE id = ?", [prediction.id], (err) => {
-          if (err) {
-            db.run("ROLLBACK");
-            return res.status(500).json({ message: "Could not cancel prediction" });
-          }
-          db.run("COMMIT");
+      db.run("DELETE FROM predictions WHERE id = ?", [prediction.id], (err) => {
+        if (err) return res.status(500).json({ message: "Could not cancel prediction" });
+        db.run("UPDATE users SET points = points + ? WHERE id = ?", [prediction.points_used, req.user.id], (err) => {
+          if (err) return res.status(500).json({ message: "Prediction cancelled but refund failed" });
           return res.json({ message: "Prediction cancelled and points refunded" });
         });
       });
@@ -1067,16 +1032,23 @@ app.get("/api/house-total", (req, res) => {
 
 app.get("/api/my-recent-results", auth, (req, res) => {
   res.set("Cache-Control", "no-store");
-  const since = req.query.since ? new Date(req.query.since).toISOString() : new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+
+  // `seen` = comma-separated match IDs the user has already been shown. Exclude them.
+  const seenIds = req.query.seen
+    ? req.query.seen.split(",").map(Number).filter(n => n > 0)
+    : [];
+  const excludeClause = seenIds.length > 0 ? `AND matches.id NOT IN (${seenIds.join(",")})` : "";
+
   db.all(
     `SELECT predictions.selected_team, predictions.points_used, predictions.odds_used,
-            matches.team_a, matches.team_b, matches.result, matches.settled_at
+            matches.id AS match_id, matches.team_a, matches.team_b, matches.result, matches.settled_at
      FROM predictions
      JOIN matches ON predictions.match_id = matches.id
      WHERE predictions.user_id = ? AND predictions.settled = 1
-       AND matches.settled_at > ?
+       AND matches.settled_at::timestamptz > NOW() - INTERVAL '36 hours'
+       ${excludeClause}
      ORDER BY matches.settled_at DESC`,
-    [req.user.id, since],
+    [req.user.id],
     (err, rows) => {
       if (err) return res.status(500).json({ message: "Could not load recent results" });
 
@@ -1085,6 +1057,7 @@ app.get("/api/my-recent-results", auth, (req, res) => {
         const odds = r.odds_used ? parseFloat(r.odds_used) : null;
         const payout = isCorrect && odds ? Math.floor(r.points_used * odds) : 0;
         return {
+          matchId: r.match_id,
           match: `${r.team_a} vs ${r.team_b}`,
           pick: r.selected_team,
           odds: r.odds_used,
