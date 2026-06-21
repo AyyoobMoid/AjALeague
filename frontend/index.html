@@ -64,7 +64,7 @@
   <h1>⚽ AJA League</h1>
         <h2>Login Details</h2>
 
-        <input type="text" id="loginUsername" placeholder="Username">
+        <input type="text" id="loginUsername" placeholder="Display name">
         <input type="password" id="loginPassword" placeholder="Password">
 
         <button onclick="login()">Login</button>
@@ -94,11 +94,16 @@
   <h1>⚽ AJA League</h1>
         <h2>Create Account</h2>
 
-<input type="text" id="registerUsername" placeholder="Choose username">
+<input type="text" id="registerUsername" placeholder="Display name (shown to others)" oninput="this.value=this.value.replace(/\s/g,'')">
+<small class="field-hint">This is the name everyone sees on the leaderboard</small>
 
 <input type="password" id="registerPassword" placeholder="Choose password">
 
-<input type="text" id="registerFullName" placeholder="Full name">
+<div class="name-row">
+  <input type="text" id="registerFirstName" placeholder="First name" oninput="this.value=this.value.replace(/\s/g,'')">
+  <input type="text" id="registerLastName" placeholder="Last name" oninput="this.value=this.value.replace(/\s/g,'')">
+</div>
+<small class="field-hint">Your real name — only visible to the admin</small>
 
         <button onclick="register()">Register</button>
 

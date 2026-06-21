@@ -177,9 +177,20 @@ function getDeviceId() {
 async function register() {
   const username = document.getElementById("registerUsername").value.trim();
   const password = document.getElementById("registerPassword").value.trim();
-  const fullName = document.getElementById("registerFullName").value.trim();
-  if (!username || !password || !fullName) {
+  const firstName = document.getElementById("registerFirstName").value.trim();
+  const lastName = document.getElementById("registerLastName").value.trim();
+  if (!username || !password || !firstName || !lastName) {
     alert("Please fill all registration fields.");
+    return;
+  }
+
+  // No spaces allowed in username or names
+  if (/\s/.test(username)) {
+    alert("Display name cannot contain spaces.");
+    return;
+  }
+  if (/\s/.test(firstName) || /\s/.test(lastName)) {
+    alert("First and last name cannot contain spaces.");
     return;
   }
 
@@ -192,7 +203,8 @@ async function register() {
       body: JSON.stringify({
         username,
         password,
-        fullName,
+        firstName,
+        lastName,
         deviceId: getDeviceId()
       })
     });
@@ -202,7 +214,8 @@ async function register() {
     if (res.ok) {
       document.getElementById("registerUsername").value = "";
       document.getElementById("registerPassword").value = "";
-      document.getElementById("registerFullName").value = "";
+      document.getElementById("registerFirstName").value = "";
+      document.getElementById("registerLastName").value = "";
 
       showPending();
     } else {
@@ -332,12 +345,12 @@ async function loadLeaderboard() {
       }
 
       box.innerHTML += `
-        <div class="leaderboard-item rank-${currentRank}" onclick="showUserHistory('${user.username}')" style="cursor:pointer" title="View ${user.full_name || user.username}'s bet history">
+        <div class="leaderboard-item rank-${currentRank}" onclick="showUserHistory('${user.username}')" style="cursor:pointer" title="View ${user.username}'s bet history">
           <span class="leader-badge">${badge}</span>
 
           <div class="leader-info">
-            <strong>#${currentRank} ${user.full_name || user.username}</strong>${rankArrow}
-            <small>${getRank(user.points)}</small>
+            <strong>#${currentRank} ${user.username}</strong>${rankArrow}
+            <small>${getRank(user.points)}${user.staked_points > 0 ? ` · ${user.staked_points.toLocaleString()} in play` : ''}</small>
           </div>
 
           <div class="leader-points">
@@ -1013,7 +1026,7 @@ async function showUserHistory(username) {
     }
 
     const { user, history } = data;
-    title.innerText = `${user.fullName || user.username}'s Bet History`;
+    title.innerText = `${user.username}'s Bet History`;
 
     // Stats summary
     let wins = 0, losses = 0, draws = 0;

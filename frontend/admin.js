@@ -61,6 +61,7 @@ async function loadAdminUsers() {
     box.innerHTML += `
       <div class="match-item">
         <h4>${user.username}</h4>
+        <p style="color:#ffd600;font-size:0.85rem;">Real name: ${user.first_name || ""} ${user.last_name || ""}${(!user.first_name && !user.last_name) ? (user.full_name || "—") : ""}</p>
 
         <p>Points: ${user.points}</p>
         <p>Status: ${user.is_active === 1 ? "Active" : "Disabled"}</p>
@@ -419,7 +420,7 @@ async function loadPendingUsers() {
     <div class="match-item" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;">
       <div>
         <strong>${u.username}</strong>
-        <p style="margin:2px 0;font-size:0.85rem;color:#aaa;">${u.full_name || '—'}</p>
+        <p style="margin:2px 0;font-size:0.85rem;color:#aaa;">${u.first_name || ""} ${u.last_name || ""}${(!u.first_name && !u.last_name) ? (u.full_name || '—') : ""}</p>
       </div>
       <button onclick="approveUser(${u.id})" style="background:rgba(34,197,94,0.15);border:1px solid rgba(34,197,94,0.4);color:#22c55e;padding:6px 16px;border-radius:8px;cursor:pointer;">
         ✓ Approve

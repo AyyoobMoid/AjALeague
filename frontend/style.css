@@ -2097,3 +2097,22 @@ button:hover::after {
 .gold-text {
   color: #ffd600;
 }
+
+/* ─── REGISTER FORM: NAME SPLIT & HINTS ──────────────────────────────────── */
+.name-row {
+  display: flex;
+  gap: 8px;
+}
+
+.name-row input {
+  flex: 1;
+  min-width: 0;
+}
+
+.field-hint {
+  display: block;
+  font-size: 0.72rem;
+  color: #888;
+  margin: -4px 0 8px;
+  padding-left: 2px;
+}
