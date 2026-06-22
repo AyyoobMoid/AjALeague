@@ -2195,3 +2195,16 @@ button:hover::after {
     padding: 12px;
   }
 }
+
+/* Profit subtext under payout in live bets */
+.abet-profit {
+  font-size: 0.66rem;
+  color: #22c55e;
+  font-weight: normal;
+}
+
+@media (max-width: 600px) {
+  .abet-profit {
+    font-size: 0.6rem;
+  }
+}

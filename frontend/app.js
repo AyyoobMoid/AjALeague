@@ -1403,13 +1403,17 @@ async function loadActiveBets() {
 
       const rows = g.bets.map(b => {
         const odds = b.odds_used ? parseFloat(b.odds_used).toFixed(2) + "x" : "—";
-        const potWin = b.odds_used ? Math.floor(b.points_used * b.odds_used).toLocaleString() : "—";
+        const payout = b.odds_used ? Math.floor(b.points_used * b.odds_used) : 0;
+        const profit = payout - b.points_used;
+        const payoutCell = b.odds_used
+          ? `${payout.toLocaleString()}<br><span class="abet-profit">+${profit.toLocaleString()} profit</span>`
+          : "—";
         return `<tr class="abet-row">
           <td class="abet-player"><strong>${b.username}</strong></td>
           <td class="abet-pick">${b.selected_team}</td>
           <td class="abet-num">${b.points_used.toLocaleString()}</td>
           <td class="abet-num">${odds}</td>
-          <td class="abet-towin">${potWin}</td>
+          <td class="abet-towin">${payoutCell}</td>
         </tr>`;
       }).join("");
 
@@ -1425,7 +1429,7 @@ async function loadActiveBets() {
                 <th class="abet-pick">Pick</th>
                 <th class="abet-num">Stake</th>
                 <th class="abet-num">Odds</th>
-                <th class="abet-towin">To Win</th>
+                <th class="abet-towin">Payout</th>
               </tr>
             </thead>
             <tbody>${rows}</tbody>
