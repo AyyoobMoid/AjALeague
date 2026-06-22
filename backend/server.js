@@ -383,13 +383,11 @@ function settleMatch(matchId, result, callback) {
               db.run("UPDATE predictions SET settled = 1 WHERE id = ?", [prediction.id], () => {
                 completed++;
                 if (completed === predictions.length) {
-                  db.run("UPDATE users SET is_active = 0 WHERE points <= 0", [], () => {
-                    const msg = result === "DRAW"
-                      ? `${match.team_a} drew with ${match.team_b}`
-                      : `${result} defeated ${result === match.team_a ? match.team_b : match.team_a}`;
-                    db.run("UPDATE matches SET settlement_message = ? WHERE id = ?", [msg, matchId], () => {
-                      callback(null, "settled");
-                    });
+                  const msg = result === "DRAW"
+                    ? `${match.team_a} drew with ${match.team_b}`
+                    : `${result} defeated ${result === match.team_a ? match.team_b : match.team_a}`;
+                  db.run("UPDATE matches SET settlement_message = ? WHERE id = ?", [msg, matchId], () => {
+                    callback(null, "settled");
                   });
                 }
               });
@@ -654,8 +652,6 @@ app.post("/api/admin/user-points", auth, adminOnly, (req, res) => {
 
   db.run("UPDATE users SET points = points + ? WHERE id = ?", [pointsAmount, userId], function (err) {
     if (err) return res.status(500).json({ message: "Could not update points" });
-    db.run("UPDATE users SET is_active = 0 WHERE points <= 0");
-    db.run("UPDATE users SET is_active = 1 WHERE points > 0");
     res.json({ message: "User points updated successfully" });
   });
 });
