@@ -135,7 +135,8 @@ function getRank(points) {
 }
 
 function updateDashboardUser(username, points) {
-  const rank = getRank(points);
+  // Updates name + points. Rank is set separately by loadLeaderboard() using
+  // net worth (cash + staked) so it matches the leaderboard standing.
   const fmtPoints = Number(points).toLocaleString();
 
   const setEl = (id, val) => { const el = document.getElementById(id); if (el) el.innerText = val; };
@@ -145,10 +146,15 @@ function updateDashboardUser(username, points) {
     setEl("heroUsername", username);
   }
   setEl("dashboardPoints", fmtPoints);
-  setEl("dashboardRank", rank);
   setEl("heroPoints", fmtPoints);
-  setEl("heroRank", rank);
-  setEl("quickRank", rank);
+
+  // Set a provisional rank from current points as a fallback (refined by leaderboard)
+  if (leaderboardPoints.length) {
+    const rank = getRank(points);
+    setEl("dashboardRank", rank);
+    setEl("heroRank", rank);
+    setEl("quickRank", rank);
+  }
 }
 
 // Updates just the points number everywhere, no username needed
@@ -323,8 +329,50 @@ async function loadLeaderboard() {
     // Update percentile rank data
     leaderboardPoints = data.map(u => Number(u.points)).sort((a, b) => b - a);
 
+    // Sync the logged-in user's dashboard rank to their NET WORTH (cash + staked)
+    // so it matches what the leaderboard shows, not their cash-only rank.
+    const myUsername = localStorage.getItem("currentUsername");
+    if (myUsername) {
+      const myEntry = data.find(u => u.username === myUsername);
+      if (myEntry) {
+        const myRank = getRank(Number(myEntry.points));
+        const setEl = (id, val) => { const el = document.getElementById(id); if (el) el.innerText = val; };
+        setEl("dashboardRank", myRank);
+        setEl("heroRank", myRank);
+        setEl("quickRank", myRank);
+        lastKnownRank = myRank;
+      }
+    }
+
+    // Build current standings signature: username -> rank, plus a points fingerprint.
+    // The rank-change arrows compare against a PERSISTENT snapshot saved in localStorage.
+    // That snapshot only updates when the standings actually change (a match settled),
+    // so arrows stay constant between matches instead of resetting on every refresh.
     const newRanks = {};
     data.forEach((user, index) => { newRanks[user.username] = index + 1; });
+
+    // Fingerprint = each player's points. If this differs from last saved, standings moved.
+    const currentFingerprint = data.map(u => `${u.username}:${u.points}`).join("|");
+    const savedFingerprint = localStorage.getItem("leaderboardFingerprint") || "";
+
+    // The baseline we compare against (the standings before the last settlement)
+    let baselineRanks = {};
+    try { baselineRanks = JSON.parse(localStorage.getItem("baselineRanks") || "{}"); } catch(e) { baselineRanks = {}; }
+
+    if (currentFingerprint !== savedFingerprint) {
+      // Standings changed since last snapshot — the OLD ranks become the new baseline.
+      // On very first load (no saved fingerprint), seed baseline = current (no arrows yet).
+      if (savedFingerprint === "") {
+        baselineRanks = newRanks;
+      } else {
+        let oldRanks = {};
+        try { oldRanks = JSON.parse(localStorage.getItem("lastRanks") || "{}"); } catch(e) { oldRanks = {}; }
+        baselineRanks = oldRanks;
+      }
+      localStorage.setItem("baselineRanks", JSON.stringify(baselineRanks));
+      localStorage.setItem("lastRanks", JSON.stringify(newRanks));
+      localStorage.setItem("leaderboardFingerprint", currentFingerprint);
+    }
 
     data.forEach((user, index) => {
       let badge = "⚽";
@@ -333,7 +381,7 @@ async function loadLeaderboard() {
       if (index === 2) badge = "🥉";
 
       const currentRank = index + 1;
-      const prevRank = previousRanks[user.username];
+      const prevRank = baselineRanks[user.username];
       let rankArrow = "";
       if (prevRank && prevRank !== currentRank) {
         if (prevRank > currentRank) {
@@ -359,8 +407,6 @@ async function loadLeaderboard() {
         </div>
       `;
     });
-
-    previousRanks = newRanks;
 
   } catch (error) {
     console.log("Leaderboard failed", error);
