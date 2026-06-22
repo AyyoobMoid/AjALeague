@@ -260,7 +260,7 @@ app.get("/api/my-predictions", auth, (req, res) => {
 app.get("/api/my-predicted-matches", auth, (req, res) => {
   res.set("Cache-Control", "no-store");
   db.all(
-    "SELECT match_id, selected_team, points_used, created_at FROM predictions WHERE user_id = ?",
+    "SELECT match_id, selected_team, points_used, odds_used, created_at FROM predictions WHERE user_id = ?",
     [req.user.id],
     (err, rows) => {
       if (err) return res.status(500).json({ message: "Could not load predicted matches" });
@@ -436,8 +436,8 @@ async function autoSettleMatches() {
         finishedMatches.forEach(m => console.log(` - ${m.homeTeam.name} vs ${m.awayTeam.name}`));
 
         for (const apiMatch of finishedMatches) {
-          const homeTeam = toDbName(apiMatch.homeTeam.name);
-          const awayTeam = toDbName(apiMatch.awayTeam.name);
+          const homeTeam = normalizeTeam(apiMatch.homeTeam.name);
+          const awayTeam = normalizeTeam(apiMatch.awayTeam.name);
           const homeScore = apiMatch.score.fullTime.home;
           const awayScore = apiMatch.score.fullTime.away;
 
@@ -448,8 +448,8 @@ async function autoSettleMatches() {
 
           // Find the matching DB row by team names (order-independent)
           const dbMatch = pendingMatches.find(m =>
-            (m.team_a === homeTeam && m.team_b === awayTeam) ||
-            (m.team_a === awayTeam && m.team_b === homeTeam)
+            (normalizeTeam(m.team_a) === homeTeam && normalizeTeam(m.team_b) === awayTeam) ||
+            (normalizeTeam(m.team_a) === awayTeam && normalizeTeam(m.team_b) === homeTeam)
           );
 
           if (dbMatch) {
@@ -619,7 +619,7 @@ app.post("/api/admin/add-match", auth, adminOnly, (req, res) => {
   db.run(
     `INSERT INTO matches (team_a, team_b, stage, venue, match_time, prediction_open, prediction_close)
      VALUES (?, ?, ?, ?, ?, ?, ?)`,
-    [teamA, teamB, stage || "Group Stage", venue || "TBA", matchDate.toISOString(), predictionOpen.toISOString(), predictionClose.toISOString(), null, null, null],
+    [teamA, teamB, stage || "Group Stage", venue || "TBA", matchDate.toISOString(), predictionOpen.toISOString(), predictionClose.toISOString()],
     (err) => {
       if (err) return res.status(500).json({ message: "Match could not be added" });
       res.json({ message: "Match added successfully" });
@@ -829,7 +829,7 @@ app.post("/api/admin/set-odds", auth, adminOnly, (req, res) => {
 
   db.run(
     "UPDATE matches SET odds_a = ?, odds_draw = ?, odds_b = ? WHERE id = ?",
-    [oddsA || null, oddsB || null, oddsDraw || null, matchId],
+    [oddsA || null, oddsDraw || null, oddsB || null, matchId],
     (err) => {
       if (err) return res.status(500).json({ message: "Could not update odds" });
       res.json({ message: "Odds updated" });
