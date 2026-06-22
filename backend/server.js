@@ -70,8 +70,15 @@ app.post("/api/register", async (req, res) => {
   if (/\s/.test(username)) {
     return res.status(400).json({ message: "Display name cannot contain spaces" });
   }
+  // Only allow safe characters in username (prevents HTML injection and broken click handlers)
+  if (!/^[A-Za-z0-9_.-]+$/.test(username)) {
+    return res.status(400).json({ message: "Display name can only contain letters, numbers, and . _ -" });
+  }
   if (/\s/.test(firstName) || /\s/.test(lastName)) {
     return res.status(400).json({ message: "First and last name cannot contain spaces" });
+  }
+  if (!/^[A-Za-z0-9_.-]+$/.test(firstName) || !/^[A-Za-z0-9_.-]+$/.test(lastName)) {
+    return res.status(400).json({ message: "Names can only contain letters, numbers, and . _ -" });
   }
 
   try {
@@ -363,7 +370,13 @@ function settleMatch(matchId, result, callback) {
             // Only pay if pick exactly matches result
             if (prediction.selected_team === result) {
               const odds = prediction.odds_used ? parseFloat(prediction.odds_used) : null;
-              if (odds) reward = Math.floor(prediction.points_used * odds);
+              if (odds) {
+                reward = Math.floor(prediction.points_used * odds);
+              } else {
+                // Safety net: a correct bet with no locked odds refunds the stake
+                // (should never happen in normal flow, but prevents silent loss)
+                reward = prediction.points_used;
+              }
             }
 
             db.run("UPDATE users SET points = points + ? WHERE id = ?", [reward, prediction.user_id], () => {
@@ -767,7 +780,7 @@ app.post("/api/admin/add-user", auth, adminOnly, async (req, res) => {
   try {
     const hashed = await bcrypt.hash(password, 10);
     db.run(
-      `INSERT INTO users (username, password, full_name, country, device_id, points, cash_eligible) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO users (username, password, full_name, country, device_id, points, cash_eligible, is_active) VALUES (?, ?, ?, ?, ?, ?, ?, 1)`,
       [username, hashed, fullName, country, "", points, eligible],
       function (err) {
         if (err) return res.status(400).json({ message: "Could not create user — username may already exist" });
