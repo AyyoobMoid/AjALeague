@@ -396,7 +396,7 @@ async function loadLeaderboard() {
           <span class="leader-badge">${badge}</span>
 
           <div class="leader-info">
-            <strong>#${currentRank} ${user.username}</strong>${rankArrow}
+            <strong>#${currentRank} ${user.username}${user.cash_eligible === 1 ? '<span class="cash-badge">$</span>' : ''}</strong>${rankArrow}
             <small>${getRank(user.points)}${Number(user.staked_points) > 0 ? ` · ${Number(user.staked_points).toLocaleString()} in play` : ''}</small>
           </div>
 

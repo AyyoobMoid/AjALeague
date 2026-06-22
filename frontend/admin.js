@@ -46,14 +46,22 @@ async function loadAdminUsers() {
     }
   });
 
-  const data = await res.json();
+  const allData = await res.json();
 
   const box = document.getElementById("adminUsers");
 
   box.innerHTML = "";
 
-  if (!data || data.length === 0) {
+  if (!allData || allData.length === 0) {
     box.innerHTML = "<p>No users found.</p>";
+    return;
+  }
+
+  // Exclude pending (inactive non-admin) accounts — they show in the Pending Approvals section
+  const data = allData.filter(u => !(u.is_active === 0 && u.is_admin !== 1));
+
+  if (data.length === 0) {
+    box.innerHTML = "<p>No active users.</p>";
     return;
   }
 
@@ -66,6 +74,7 @@ async function loadAdminUsers() {
         <p>Points: ${user.points}</p>
         <p>Status: ${user.is_active === 1 ? "Active" : "Disabled"}</p>
         <p>Admin: ${user.is_admin === 1 ? "Yes" : "No"}</p>
+        <p>Cash prize eligible: ${user.cash_eligible === 1 ? '<span style="color:#22c55e;font-weight:bold;">✓ Yes</span>' : '<span style="color:#888;">No</span>'}</p>
 
         <input
           type="number"
@@ -81,6 +90,10 @@ async function loadAdminUsers() {
           ${user.is_active === 1 ? "Disable User" : "Activate User"}
         </button>
 
+        <button onclick="toggleCashEligible(${user.id})" style="background:${user.cash_eligible === 1 ? 'rgba(34,197,94,0.2)' : 'rgba(255,255,255,0.05)'};border:1px solid rgba(34,197,94,0.4);color:#22c55e;">
+          ${user.cash_eligible === 1 ? "Remove $ Prize Flag" : "Mark $ Prize Eligible"}
+        </button>
+
         <button onclick="deleteUser(${user.id})">
   Delete User
 </button>
@@ -88,6 +101,18 @@ async function loadAdminUsers() {
     `;
   });
 }
+async function toggleCashEligible(userId) {
+  const token = localStorage.getItem("token");
+  const res = await fetch(`${API}/admin/toggle-cash-eligible`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "Authorization": token },
+    body: JSON.stringify({ userId })
+  });
+  const data = await res.json();
+  alert(data.message);
+  loadAdminUsers();
+}
+
 async function deleteUser(userId) {
   const token = localStorage.getItem("token");
 
@@ -325,6 +350,7 @@ async function addUserWithPoints() {
   const fullName = document.getElementById("newUserFullName").value.trim();
   const country = document.getElementById("newUserCountry").value.trim();
   const startingPoints = document.getElementById("newUserPoints").value.trim();
+  const cashEligible = document.getElementById("newUserCashEligible").checked;
 
   if (!username || !password || !fullName || !country) {
     alert("Please fill all fields.");
@@ -340,13 +366,15 @@ async function addUserWithPoints() {
       "Content-Type": "application/json",
       "Authorization": token
     },
-    body: JSON.stringify({ username, password, fullName, country, startingPoints })
+    body: JSON.stringify({ username, password, fullName, country, startingPoints, cashEligible })
   });
 
   const data = await res.json();
   alert(data.message);
 
   if (res.ok) {
+    const cb = document.getElementById("newUserCashEligible");
+    if (cb) cb.checked = false;
     document.getElementById("newUserUsername").value = "";
     document.getElementById("newUserPassword").value = "";
     document.getElementById("newUserFullName").value = "";

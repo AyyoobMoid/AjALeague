@@ -2115,4 +2115,24 @@ button:hover::after {
   color: #888;
   margin: 6px 0 14px;
   padding-left: 2px;
+  line-height: 1.3;
+}
+
+/* ─── CASH PRIZE ELIGIBLE BADGE ──────────────────────────────────────────── */
+.cash-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  margin-left: 6px;
+  background: #22c55e;
+  color: #0a0a0a;
+  font-weight: 900;
+  font-size: 0.72rem;
+  border-radius: 4px;
+  vertical-align: middle;
+  line-height: 1;
+  flex-shrink: 0;
+  box-shadow: 0 0 8px rgba(34, 197, 94, 0.4);
 }
