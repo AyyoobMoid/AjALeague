@@ -2119,20 +2119,27 @@ button:hover::after {
 }
 
 /* ─── CASH PRIZE ELIGIBLE BADGE ──────────────────────────────────────────── */
+/* Fixed-width slot sits between the name and points so every $ aligns in a column */
+.cash-badge-slot {
+  width: 34px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
 .cash-badge {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 18px;
-  height: 18px;
-  margin-left: 6px;
+  width: 34px;
+  height: 34px;
   background: #22c55e;
   color: #0a0a0a;
   font-weight: 900;
-  font-size: 0.72rem;
-  border-radius: 4px;
-  vertical-align: middle;
+  font-size: 1.15rem;
+  border-radius: 8px;
   line-height: 1;
   flex-shrink: 0;
-  box-shadow: 0 0 8px rgba(34, 197, 94, 0.4);
+  box-shadow: 0 0 12px rgba(34, 197, 94, 0.45);
 }
