@@ -23,7 +23,7 @@
     <p>Before creating your account, please read and accept the following:</p>
 
     <ul>
-      <li>Welcome to your gateway drug into the world of online gambling.</li>
+      <li>This league is for AJA family and community members.</li>
       <li>This is not a betting platform and has no real-money gambling.</li>
       <li>Points are only for fun, ranking, and community engagement.</li>
       <li>By joining, you agree to follow AJA League rules and terms.</li>
@@ -94,14 +94,14 @@
   <h1>⚽ AJA League</h1>
         <h2>Create Account</h2>
 
-<input type="text" id="registerUsername" placeholder="Display name (shown to others)" oninput="this.value=this.value.replace(/\s/g,'')">
+<input type="text" id="registerUsername" placeholder="Display name (shown to others)" oninput="this.value=this.value.replace(/[^A-Za-z0-9_.-]/g,'')">
 <small class="field-hint">This is the name everyone sees on the leaderboard</small>
 
 <input type="password" id="registerPassword" placeholder="Choose password">
 
 <div class="name-row">
-  <input type="text" id="registerFirstName" placeholder="First name" oninput="this.value=this.value.replace(/\s/g,'')">
-  <input type="text" id="registerLastName" placeholder="Last name" oninput="this.value=this.value.replace(/\s/g,'')">
+  <input type="text" id="registerFirstName" placeholder="First name" oninput="this.value=this.value.replace(/[^A-Za-z0-9_.-]/g,'')">
+  <input type="text" id="registerLastName" placeholder="Last name" oninput="this.value=this.value.replace(/[^A-Za-z0-9_.-]/g,'')">
 </div>
 <small class="field-hint">Your real name — only visible to the admin</small>
 
@@ -155,7 +155,7 @@
   <h3>⚽ How It Works</h3>
 
   <div class="rules-section">
-    <p class="rules-line">🎁 Everyone starts with <strong class="green-text">100,000 points</strong></p>
+    <p class="rules-line">🎁 Everyone starts with <strong class="green-text">5,000 points</strong></p>
     <p class="rules-line">✅ Win your pick → <strong class="green-text">Stake × Odds</strong></p>
     <p class="rules-line">❌ Lose your pick → <strong class="red-text">lose your stake</strong></p>
     <p class="rules-line">🏆 Most points by the final whistle wins</p>

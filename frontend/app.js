@@ -194,8 +194,16 @@ async function register() {
     alert("Display name cannot contain spaces.");
     return;
   }
+  if (!/^[A-Za-z0-9_.-]+$/.test(username)) {
+    alert("Display name can only contain letters, numbers, and . _ -");
+    return;
+  }
   if (/\s/.test(firstName) || /\s/.test(lastName)) {
     alert("First and last name cannot contain spaces.");
+    return;
+  }
+  if (!/^[A-Za-z0-9_.-]+$/.test(firstName) || !/^[A-Za-z0-9_.-]+$/.test(lastName)) {
+    alert("Names can only contain letters, numbers, and . _ -");
     return;
   }
 
