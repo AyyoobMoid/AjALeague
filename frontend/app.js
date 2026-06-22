@@ -1404,12 +1404,12 @@ async function loadActiveBets() {
       const rows = g.bets.map(b => {
         const odds = b.odds_used ? parseFloat(b.odds_used).toFixed(2) + "x" : "—";
         const potWin = b.odds_used ? Math.floor(b.points_used * b.odds_used).toLocaleString() : "—";
-        return `<tr style="border-bottom:1px solid rgba(255,255,255,0.05);">
-          <td style="padding:6px 8px;width:22%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"><strong>${b.username}</strong></td>
-          <td style="padding:6px 8px;width:22%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${b.selected_team}</td>
-          <td style="padding:6px 8px;width:18%;text-align:right;">${b.points_used.toLocaleString()}</td>
-          <td style="padding:6px 8px;width:14%;text-align:right;">${odds}</td>
-          <td style="padding:6px 8px;width:24%;text-align:right;color:#ffd600;font-weight:bold;">${potWin}</td>
+        return `<tr class="abet-row">
+          <td class="abet-player"><strong>${b.username}</strong></td>
+          <td class="abet-pick">${b.selected_team}</td>
+          <td class="abet-num">${b.points_used.toLocaleString()}</td>
+          <td class="abet-num">${odds}</td>
+          <td class="abet-towin">${potWin}</td>
         </tr>`;
       }).join("");
 
@@ -1418,14 +1418,14 @@ async function loadActiveBets() {
           <h4>${g.team_a} vs ${g.team_b}</h4>
           <p>${g.stage}${g.group_name ? " · " + g.group_name : ""} · ${matchDate} UAE</p>
           <p style="color:#ffd600;font-size:0.85rem;">Total staked: ${totalStake.toLocaleString()} pts · ${g.bets.length} bets</p>
-          <table style="width:100%;border-collapse:collapse;margin-top:8px;font-size:0.82rem;">
+          <table class="active-bets-table">
             <thead>
-              <tr style="color:#ffd600;border-bottom:1px solid rgba(255,214,0,0.3);">
-                <th style="padding:6px 8px;text-align:left;width:22%;">Player</th>
-                <th style="padding:6px 8px;text-align:left;width:22%;">Pick</th>
-                <th style="padding:6px 8px;text-align:right;width:18%;">Stake</th>
-                <th style="padding:6px 8px;text-align:right;width:14%;">Odds</th>
-                <th style="padding:6px 8px;text-align:right;width:24%;">To Win</th>
+              <tr>
+                <th class="abet-player">Player</th>
+                <th class="abet-pick">Pick</th>
+                <th class="abet-num">Stake</th>
+                <th class="abet-num">Odds</th>
+                <th class="abet-towin">To Win</th>
               </tr>
             </thead>
             <tbody>${rows}</tbody>

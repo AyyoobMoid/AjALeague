@@ -2143,3 +2143,55 @@ button:hover::after {
   flex-shrink: 0;
   box-shadow: 0 0 12px rgba(34, 197, 94, 0.45);
 }
+
+/* ─── LIVE BETS TABLE ─────────────────────────────────────────────────────── */
+.active-bets-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 8px;
+  font-size: 0.82rem;
+  table-layout: fixed;
+}
+
+.active-bets-table thead tr {
+  color: #ffd600;
+  border-bottom: 1px solid rgba(255, 214, 0, 0.3);
+}
+
+.active-bets-table th,
+.active-bets-table td {
+  padding: 6px 8px;
+}
+
+.active-bets-table tbody tr {
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+/* Column widths + alignment */
+.abet-player { text-align: left; width: 22%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.abet-pick   { text-align: left; width: 24%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.abet-num    { text-align: right; width: 16%; }
+.abet-towin  { text-align: right; width: 22%; color: #ffd600; font-weight: bold; }
+
+/* Mobile: tighten padding and font so all 5 columns fit on a phone */
+@media (max-width: 600px) {
+  .active-bets-table {
+    font-size: 0.72rem;
+  }
+  .active-bets-table th,
+  .active-bets-table td {
+    padding: 5px 3px;
+  }
+  /* Reclaim width: shrink player/pick so numeric columns are never cut off */
+  .abet-player { width: 24%; }
+  .abet-pick   { width: 22%; }
+  .abet-num    { width: 16%; }
+  .abet-towin  { width: 22%; }
+}
+
+/* Mobile: reduce match-item card padding so inner tables have room */
+@media (max-width: 600px) {
+  .match-item {
+    padding: 12px;
+  }
+}
