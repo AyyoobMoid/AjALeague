@@ -127,14 +127,14 @@ app.get("/api/leaderboard", (req, res) => {
   // Total = current points + stakes locked in pending (unsettled) bets.
   // This shows a player's full net worth: cash on hand plus money in play.
   db.all(
-    `SELECT u.username,
+    `SELECT u.username, u.cash_eligible,
             u.points + COALESCE(SUM(CASE WHEN p.settled = 0 THEN p.points_used ELSE 0 END), 0) AS points,
             u.points AS cash_points,
             COALESCE(SUM(CASE WHEN p.settled = 0 THEN p.points_used ELSE 0 END), 0) AS staked_points
      FROM users u
      LEFT JOIN predictions p ON u.id = p.user_id
      WHERE u.is_active = 1 AND u.is_admin = 0
-     GROUP BY u.id, u.username, u.points
+     GROUP BY u.id, u.username, u.points, u.cash_eligible
      ORDER BY points DESC`,
     [],
     (err, rows) => {
@@ -628,7 +628,7 @@ app.post("/api/admin/add-match", auth, adminOnly, (req, res) => {
 });
 
 app.get("/api/admin/users", auth, adminOnly, (req, res) => {
-  db.all("SELECT id, username, first_name, last_name, full_name, points, is_active, is_admin FROM users ORDER BY points DESC", [], (err, rows) => {
+  db.all("SELECT id, username, first_name, last_name, full_name, points, is_active, is_admin, cash_eligible FROM users ORDER BY points DESC", [], (err, rows) => {
     if (err) return res.status(500).json({ message: "Could not load users" });
     res.json(rows);
   });
@@ -657,6 +657,21 @@ app.post("/api/admin/toggle-user", auth, adminOnly, (req, res) => {
     db.run("UPDATE users SET is_active = ? WHERE id = ?", [newStatus, userId], function (err) {
       if (err) return res.status(500).json({ message: "Could not update user status" });
       res.json({ message: newStatus === 1 ? "User activated" : "User disabled" });
+    });
+  });
+});
+
+
+app.post("/api/admin/toggle-cash-eligible", auth, adminOnly, (req, res) => {
+  const { userId } = req.body;
+  if (!userId) return res.status(400).json({ message: "User ID required" });
+
+  db.get("SELECT cash_eligible FROM users WHERE id = ?", [userId], (err, user) => {
+    if (err || !user) return res.status(404).json({ message: "User not found" });
+    const newStatus = user.cash_eligible === 1 ? 0 : 1;
+    db.run("UPDATE users SET cash_eligible = ? WHERE id = ?", [newStatus, userId], function (err) {
+      if (err) return res.status(500).json({ message: "Could not update cash eligibility" });
+      res.json({ message: newStatus === 1 ? "Marked as cash-prize eligible" : "Removed cash-prize eligibility", cash_eligible: newStatus });
     });
   });
 });
@@ -740,19 +755,20 @@ app.get("/api/user-profile/:username", auth, (req, res) => {
 // ─── ADMIN: ADD USER WITH CUSTOM POINTS (for migrating from Yugo league) ─────
 
 app.post("/api/admin/add-user", auth, adminOnly, async (req, res) => {
-  const { username, password, fullName, country, startingPoints } = req.body;
+  const { username, password, fullName, country, startingPoints, cashEligible } = req.body;
 
   if (!username || !password || !fullName || !country) {
     return res.status(400).json({ message: "Username, password, full name and country are required" });
   }
 
   const points = Number(startingPoints) || 5000;
+  const eligible = cashEligible ? 1 : 0;
 
   try {
     const hashed = await bcrypt.hash(password, 10);
     db.run(
-      `INSERT INTO users (username, password, full_name, country, device_id, points) VALUES (?, ?, ?, ?, ?, ?)`,
-      [username, hashed, fullName, country, "", points],
+      `INSERT INTO users (username, password, full_name, country, device_id, points, cash_eligible) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      [username, hashed, fullName, country, "", points, eligible],
       function (err) {
         if (err) return res.status(400).json({ message: "Could not create user — username may already exist" });
         return res.json({ message: `User ${username} created with ${points} points` });
