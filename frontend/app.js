@@ -713,10 +713,6 @@ if (match.result) {
             </p>
 
             <p>
-              Venue: ${match.venue || "TBA"}
-            </p>
-
-            <p>
               Time: ${timeText} UAE
             </p>
 
