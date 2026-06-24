@@ -186,7 +186,20 @@ app.post("/api/predict", auth, (req, res) => {
         return res.status(400).json({ message: "Prediction is not open for this match" });
       }
 
-      const oddsUsed = req.body.oddsUsed || null;
+      // Reject bets on matches without real odds (no betting on placeholder/null odds)
+      if (!match.odds_a || !match.odds_draw || !match.odds_b) {
+        return res.status(400).json({ message: "Odds are not available for this match yet" });
+      }
+
+      // Determine the correct stored odds for the selected outcome
+      let correctOdds;
+      if (selectedTeam === match.team_a) correctOdds = parseFloat(match.odds_a);
+      else if (selectedTeam === match.team_b) correctOdds = parseFloat(match.odds_b);
+      else if (selectedTeam === "DRAW") correctOdds = parseFloat(match.odds_draw);
+      else return res.status(400).json({ message: "Invalid selection" });
+
+      // Lock in the odds from the DB, not whatever the client sent (prevents odds tampering)
+      const oddsUsed = correctOdds;
       db.run(
         "INSERT INTO predictions (user_id, match_id, selected_team, points_used, odds_used) VALUES (?, ?, ?, ?, ?)",
         [req.user.id, matchId, selectedTeam, amount, oddsUsed],
@@ -938,7 +951,18 @@ app.post("/api/update-predict", auth, (req, res) => {
       if (existing.settled) return res.status(400).json({ message: "Prediction already settled" });
 
       const oldAmount = existing.points_used;
-      const oddsUsed = req.body.oddsUsed || null;
+
+      // Reject if odds aren't available
+      if (!match.odds_a || !match.odds_draw || !match.odds_b) {
+        return res.status(400).json({ message: "Odds are not available for this match yet" });
+      }
+      // Lock odds from the DB for the selected outcome (not client-supplied)
+      let correctOdds;
+      if (selectedTeam === match.team_a) correctOdds = parseFloat(match.odds_a);
+      else if (selectedTeam === match.team_b) correctOdds = parseFloat(match.odds_b);
+      else if (selectedTeam === "DRAW") correctOdds = parseFloat(match.odds_draw);
+      else return res.status(400).json({ message: "Invalid selection" });
+      const oddsUsed = correctOdds;
 
       // Free editing allowed until prediction window closes — no cooldown.
       // The window-closed check above (now > closeTime) already prevents late edits.
