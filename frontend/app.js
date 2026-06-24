@@ -532,6 +532,11 @@ function renderMatchCards(data) {
           timeZone: "Asia/Dubai"
         });
 
+        // A match is only bettable once REAL odds exist for all three outcomes.
+        // Until the odds API populates them, betting is disabled (no placeholder odds).
+        const oddsReady = match.odds_a && match.odds_draw && match.odds_b
+          && parseFloat(match.odds_a) > 0 && parseFloat(match.odds_draw) > 0 && parseFloat(match.odds_b) > 0;
+
         let actionHtml = "";
 
 if (match.result) {
@@ -623,6 +628,20 @@ if (match.result) {
     </p>
   `;
 
+} else if (now >= openTime && now <= closeTime && !oddsReady) {
+
+  // Match is open by time, but odds haven't been set yet — don't allow betting on placeholders
+  actionHtml = `
+  <div class="countdown-box">
+    <span>Predictions close in:</span>
+    <strong id="timer-${match.id}">${getCountdown(closeTime)}</strong>
+  </div>
+  <div class="odds-pending-box">
+    <p>⏳ Odds not available yet</p>
+    <small>Betting opens for this match once odds are set. Check back soon.</small>
+  </div>
+  `;
+
 } else if (now >= openTime && now <= closeTime) {
 
   actionHtml = `
@@ -642,17 +661,17 @@ if (match.result) {
   <div class="prediction-box">
 
     <div class="bet-options">
-      <button class="bet-btn" onclick="selectBet(${match.id}, '${match.team_a}', ${match.odds_a || 2})">
+      <button class="bet-btn" onclick="selectBet(${match.id}, '${match.team_a}', ${match.odds_a})">
         <span class="bet-team">${match.team_a}</span>
-        <span class="bet-odds">${match.odds_a ? parseFloat(match.odds_a).toFixed(2) + 'x' : '2.00x'}</span>
+        <span class="bet-odds">${parseFloat(match.odds_a).toFixed(2)}x</span>
       </button>
-      <button class="bet-btn draw-btn" onclick="selectBet(${match.id}, 'DRAW', ${match.odds_draw || 1.5})">
+      <button class="bet-btn draw-btn" onclick="selectBet(${match.id}, 'DRAW', ${match.odds_draw})">
         <span class="bet-team">Draw</span>
-        <span class="bet-odds">${match.odds_draw ? parseFloat(match.odds_draw).toFixed(2) + 'x' : '1.50x'}</span>
+        <span class="bet-odds">${parseFloat(match.odds_draw).toFixed(2)}x</span>
       </button>
-      <button class="bet-btn" onclick="selectBet(${match.id}, '${match.team_b}', ${match.odds_b || 2})">
+      <button class="bet-btn" onclick="selectBet(${match.id}, '${match.team_b}', ${match.odds_b})">
         <span class="bet-team">${match.team_b}</span>
-        <span class="bet-odds">${match.odds_b ? parseFloat(match.odds_b).toFixed(2) + 'x' : '2.00x'}</span>
+        <span class="bet-odds">${parseFloat(match.odds_b).toFixed(2)}x</span>
       </button>
     </div>
     <div id="bet-slip-${match.id}" class="bet-slip hidden">
@@ -710,6 +729,10 @@ if (match.result) {
             <p>
               Stage: ${match.stage}
               ${match.group_name ? " - " + match.group_name : ""}
+            </p>
+
+            <p>
+              Venue: ${match.venue || "TBA"}
             </p>
 
             <p>

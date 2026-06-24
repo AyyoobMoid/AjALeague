@@ -2208,3 +2208,23 @@ button:hover::after {
     font-size: 0.6rem;
   }
 }
+
+/* ─── ODDS PENDING STATE ──────────────────────────────────────────────────── */
+.odds-pending-box {
+  text-align: center;
+  padding: 16px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px dashed rgba(255, 214, 0, 0.3);
+  border-radius: 12px;
+  margin-top: 10px;
+}
+.odds-pending-box p {
+  color: #ffd000;
+  font-weight: bold;
+  margin: 0 0 4px;
+  font-size: 0.95rem;
+}
+.odds-pending-box small {
+  color: #999;
+  font-size: 0.8rem;
+}
