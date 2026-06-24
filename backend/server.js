@@ -603,16 +603,29 @@ async function fetchAndStoreOdds() {
 
 function normalizeTeam(name) {
   if (!name) return "";
+  // Strip accents and normalize whitespace so "México" === "Mexico", etc.
+  let n = name.normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
+
   const map = {
-    "United States": "USA", "South Korea": "Korea Republic",
-    "Turkey": "Turkiye", "Türkiye": "Turkiye",
+    "United States": "USA", "USA": "USA", "US": "USA",
+    "South Korea": "Korea Republic", "Korea Republic": "Korea Republic", "Korea": "Korea Republic",
+    "Turkey": "Turkiye", "Turkiye": "Turkiye",
     "Bosnia-Herzegovina": "Bosnia and Herzegovina",
-    "Cape Verde Islands": "Cabo Verde", "Cape Verde": "Cabo Verde",
-    "Curaçao": "Curacao", "IR Iran": "Iran",
-    "Côte d'Ivoire": "Ivory Coast", "Congo DR": "Congo DR",
-    "DR Congo": "Congo DR"
+    "Bosnia & Herzegovina": "Bosnia and Herzegovina",
+    "Bosnia and Herzegovina": "Bosnia and Herzegovina",
+    "Bosnia": "Bosnia and Herzegovina",
+    "Cape Verde Islands": "Cabo Verde", "Cape Verde": "Cabo Verde", "Cabo Verde": "Cabo Verde",
+    "Curacao": "Curacao",
+    "IR Iran": "Iran", "Iran": "Iran",
+    "Cote d'Ivoire": "Ivory Coast", "Ivory Coast": "Ivory Coast",
+    "Congo DR": "Congo DR", "DR Congo": "Congo DR", "Congo": "Congo DR",
+    "Czech Republic": "Czechia", "Czechia": "Czechia",
+    "Mexico": "Mexico",
+    "Republic of Ireland": "Ireland", "Ireland": "Ireland",
+    "South Africa": "South Africa",
+    "Saudi Arabia": "Saudi Arabia"
   };
-  return map[name] || name;
+  return map[n] || n;
 }
 
 // Fetch odds every 2 hours
