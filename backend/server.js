@@ -186,16 +186,29 @@ app.post("/api/predict", auth, (req, res) => {
         return res.status(400).json({ message: "Prediction is not open for this match" });
       }
 
-      // Reject bets on matches without real odds (no betting on placeholder/null odds)
-      if (!match.odds_a || !match.odds_draw || !match.odds_b) {
-        return res.status(400).json({ message: "Odds are not available for this match yet" });
+      const knockout = isKnockoutStage(match.stage);
+
+      // Reject bets on matches without real odds (no betting on placeholder/null odds).
+      // Knockout matches are two-way (to advance) so they have no draw odds.
+      if (knockout) {
+        if (!match.odds_a || !match.odds_b) {
+          return res.status(400).json({ message: "Odds are not available for this match yet" });
+        }
+      } else {
+        if (!match.odds_a || !match.odds_draw || !match.odds_b) {
+          return res.status(400).json({ message: "Odds are not available for this match yet" });
+        }
       }
 
       // Determine the correct stored odds for the selected outcome
       let correctOdds;
       if (selectedTeam === match.team_a) correctOdds = parseFloat(match.odds_a);
       else if (selectedTeam === match.team_b) correctOdds = parseFloat(match.odds_b);
-      else if (selectedTeam === "DRAW") correctOdds = parseFloat(match.odds_draw);
+      else if (selectedTeam === "DRAW") {
+        // No draw market in knockouts — a knockout always produces an advancer.
+        if (knockout) return res.status(400).json({ message: "No draw option in knockout matches — pick a team to advance" });
+        correctOdds = parseFloat(match.odds_draw);
+      }
       else return res.status(400).json({ message: "Invalid selection" });
 
       // Lock in the odds from the DB, not whatever the client sent (prevents odds tampering)
@@ -367,9 +380,12 @@ function settleMatch(matchId, result, callback) {
           if (err) return callback(err);
 
           if (predictions.length === 0) {
+            const ko = isKnockoutStage(match.stage);
             const msg = result === "DRAW"
               ? `${match.team_a} drew with ${match.team_b}`
-              : `${result} defeated ${result === match.team_a ? match.team_b : match.team_a}`;
+              : ko
+                ? `${result} advanced past ${result === match.team_a ? match.team_b : match.team_a}`
+                : `${result} defeated ${result === match.team_a ? match.team_b : match.team_a}`;
             db.run("UPDATE matches SET settlement_message = ? WHERE id = ?", [msg, matchId], () => {
               callback(null, `settled_no_predictions`);
             });
@@ -396,9 +412,12 @@ function settleMatch(matchId, result, callback) {
               db.run("UPDATE predictions SET settled = 1 WHERE id = ?", [prediction.id], () => {
                 completed++;
                 if (completed === predictions.length) {
+                  const ko = isKnockoutStage(match.stage);
                   const msg = result === "DRAW"
                     ? `${match.team_a} drew with ${match.team_b}`
-                    : `${result} defeated ${result === match.team_a ? match.team_b : match.team_a}`;
+                    : ko
+                      ? `${result} advanced past ${result === match.team_a ? match.team_b : match.team_a}`
+                      : `${result} defeated ${result === match.team_a ? match.team_b : match.team_a}`;
                   db.run("UPDATE matches SET settlement_message = ? WHERE id = ?", [msg, matchId], () => {
                     callback(null, "settled");
                   });
@@ -462,19 +481,44 @@ async function autoSettleMatches() {
         for (const apiMatch of finishedMatches) {
           const homeTeam = normalizeTeam(apiMatch.homeTeam.name);
           const awayTeam = normalizeTeam(apiMatch.awayTeam.name);
-          const homeScore = apiMatch.score.fullTime.home;
-          const awayScore = apiMatch.score.fullTime.away;
-
-          let result;
-          if (homeScore === awayScore) result = "DRAW";
-          else if (homeScore > awayScore) result = homeTeam;
-          else result = awayTeam;
+          // Read full-time score defensively — structure can vary, and for
+          // knockouts decided on penalties we don't need it at all.
+          const ft = (apiMatch.score && apiMatch.score.fullTime) || {};
+          const homeScore = ft.home;
+          const awayScore = ft.away;
 
           // Find the matching DB row by team names (order-independent)
           const dbMatch = pendingMatches.find(m =>
             (normalizeTeam(m.team_a) === homeTeam && normalizeTeam(m.team_b) === awayTeam) ||
             (normalizeTeam(m.team_a) === awayTeam && normalizeTeam(m.team_b) === homeTeam)
           );
+
+          let result;
+          if (dbMatch && isKnockoutStage(dbMatch.stage)) {
+            // KNOCKOUT: no draws. Settle on who ADVANCED (penalty-aware).
+            // football-data.org sets score.winner to HOME_TEAM / AWAY_TEAM
+            // based on the full result including extra time + penalties.
+            const w = apiMatch.score && apiMatch.score.winner;
+            if (w === "HOME_TEAM") result = homeTeam;
+            else if (w === "AWAY_TEAM") result = awayTeam;
+            else {
+              // winner not yet populated (e.g. match marked FINISHED before
+              // pens recorded) — skip this cycle, try again next poll.
+              console.log(`Knockout ${homeTeam} v ${awayTeam}: winner not set yet, skipping`);
+              continue;
+            }
+          } else {
+            // GROUP STAGE: 90-minute result, draw is a valid outcome.
+            // If the score structure is missing, skip rather than crash.
+            if (homeScore === undefined || homeScore === null ||
+                awayScore === undefined || awayScore === null) {
+              console.log(`${homeTeam} v ${awayTeam}: full-time score missing, skipping`);
+              continue;
+            }
+            if (homeScore === awayScore) result = "DRAW";
+            else if (homeScore > awayScore) result = homeTeam;
+            else result = awayTeam;
+          }
 
           if (dbMatch) {
             // If teams are stored reversed vs API order, result label is already correct
@@ -522,6 +566,29 @@ function applyOverround(oddsHome, oddsDraw, oddsAway, targetBook = 1.03) {
     home: Math.round((1 / newPHome) * 100) / 100,
     draw: Math.round((1 / newPDraw) * 100) / 100,
     away: Math.round((1 / newPAway) * 100) / 100
+  };
+}
+
+// ─── KNOCKOUT "TO ADVANCE" ODDS DERIVATION ───────────────────────────────────
+// The Odds API free WC tier only exposes the 3-way h2h market (with a Draw),
+// even for knockout fixtures. For a knockout we need a two-way "to advance"
+// market. We derive it: strip the overround from the 3-way book to get true
+// probabilities, then a team's probability to ADVANCE = its win probability
+// plus half the draw probability (a drawn match goes to ET/penalties, modelled
+// as a coin flip). Convert back to odds with a fixed house margin.
+function deriveAdvanceOdds(oddsHome, oddsDraw, oddsAway, margin = 1.05) {
+  if (!oddsHome || !oddsDraw || !oddsAway) {
+    return { home: oddsHome, away: oddsAway };
+  }
+  const pHome = 1 / oddsHome;
+  const pDraw = 1 / oddsDraw;
+  const pAway = 1 / oddsAway;
+  const tot = pHome + pDraw + pAway;          // remove overround
+  const advHome = (pHome + pDraw * 0.5) / tot;
+  const advAway = (pAway + pDraw * 0.5) / tot;
+  return {
+    home: Math.round((1 / (advHome * margin)) * 100) / 100,
+    away: Math.round((1 / (advAway * margin)) * 100) / 100
   };
 }
 
@@ -584,6 +651,17 @@ async function fetchAndStoreOdds() {
         }
         const oddsDraw = avg(drawOdds);
 
+        if (isKnockoutStage(dbMatch.stage)) {
+          // ── KNOCKOUT: derive two-way "to advance" odds, no draw ──────────
+          const adv = deriveAdvanceOdds(oddsHome, oddsDraw, oddsAway, 1.05);
+          db.run(
+            "UPDATE matches SET odds_a = ?, odds_draw = NULL, odds_b = ? WHERE id = ?",
+            [adv.home, adv.away, dbMatch.id],
+            () => console.log(`Advance odds: ${dbMatch.team_a} vs ${dbMatch.team_b} | ${adv.home} / ${adv.away} (to advance)`)
+          );
+          return;
+        }
+
         // ── OVERROUND NORMALIZATION (target 103% book) ──────────────────────
         // Re-scale odds so implied probabilities sum to exactly 1.03, giving a
         // consistent 3% house margin and removing any arbitrage opportunity.
@@ -599,6 +677,17 @@ async function fetchAndStoreOdds() {
   } catch (err) {
     console.log("Odds fetch error:", err.message);
   }
+}
+
+// Returns true if a match's stage is a knockout round (no draws; settle on
+// who advances). Group-stage matches return false and keep 3-way settlement.
+function isKnockoutStage(stage) {
+  if (!stage) return false;
+  const s = stage.toLowerCase();
+  return s.includes("round of 32") || s.includes("round of 16") ||
+         s.includes("quarter") || s.includes("semi") ||
+         s.includes("final") || s.includes("third place") ||
+         s.includes("3rd place") || s.includes("knockout");
 }
 
 function normalizeTeam(name) {
@@ -964,16 +1053,26 @@ app.post("/api/update-predict", auth, (req, res) => {
       if (existing.settled) return res.status(400).json({ message: "Prediction already settled" });
 
       const oldAmount = existing.points_used;
+      const knockout = isKnockoutStage(match.stage);
 
-      // Reject if odds aren't available
-      if (!match.odds_a || !match.odds_draw || !match.odds_b) {
-        return res.status(400).json({ message: "Odds are not available for this match yet" });
+      // Reject if odds aren't available (knockouts are two-way, no draw odds)
+      if (knockout) {
+        if (!match.odds_a || !match.odds_b) {
+          return res.status(400).json({ message: "Odds are not available for this match yet" });
+        }
+      } else {
+        if (!match.odds_a || !match.odds_draw || !match.odds_b) {
+          return res.status(400).json({ message: "Odds are not available for this match yet" });
+        }
       }
       // Lock odds from the DB for the selected outcome (not client-supplied)
       let correctOdds;
       if (selectedTeam === match.team_a) correctOdds = parseFloat(match.odds_a);
       else if (selectedTeam === match.team_b) correctOdds = parseFloat(match.odds_b);
-      else if (selectedTeam === "DRAW") correctOdds = parseFloat(match.odds_draw);
+      else if (selectedTeam === "DRAW") {
+        if (knockout) return res.status(400).json({ message: "No draw option in knockout matches — pick a team to advance" });
+        correctOdds = parseFloat(match.odds_draw);
+      }
       else return res.status(400).json({ message: "Invalid selection" });
       const oddsUsed = correctOdds;
 
