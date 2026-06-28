@@ -1,5 +1,15 @@
 const API = "/api";
 
+// Knockout stages use a two-way "advance" result (no Draw button).
+function adminIsKnockout(stage) {
+  if (!stage) return false;
+  const s = stage.toLowerCase();
+  return s.includes("round of 32") || s.includes("round of 16") ||
+         s.includes("quarter") || s.includes("semi") ||
+         s.includes("final") || s.includes("third place") ||
+         s.includes("3rd place") || s.includes("knockout");
+}
+
 function goHome() {
   window.location.href = "/";
 }
@@ -235,16 +245,16 @@ async function loadAdminMatches() {
         <p>Result: ${match.result || "Not set"}</p>
 
         <button onclick="setResult(${match.id}, '${match.team_a}')">
-          ${match.team_a} Won
+          ${match.team_a} ${adminIsKnockout(match.stage) ? "Advanced" : "Won"}
         </button>
 
         <button onclick="setResult(${match.id}, '${match.team_b}')">
-          ${match.team_b} Won
+          ${match.team_b} ${adminIsKnockout(match.stage) ? "Advanced" : "Won"}
         </button>
 
-        <button onclick="setResult(${match.id}, 'DRAW')">
+        ${adminIsKnockout(match.stage) ? "" : `<button onclick="setResult(${match.id}, 'DRAW')">
           Draw
-        </button>
+        </button>`}
 
       </div>
     `;

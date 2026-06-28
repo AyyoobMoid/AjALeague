@@ -1698,6 +1698,21 @@ button:hover::after {
   color: #aaa;
 }
 
+/* "to advance" tag on knockout bet buttons */
+.adv-tag {
+  display: inline-block;
+  font-size: 0.62rem;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: #ffd000;
+  background: rgba(255, 214, 0, 0.12);
+  border-radius: 4px;
+  padding: 1px 5px;
+  margin-left: 4px;
+  vertical-align: middle;
+}
+
 .bet-slip {
   background: rgba(255, 214, 0, 0.06);
   border: 1px solid rgba(255, 214, 0, 0.2);

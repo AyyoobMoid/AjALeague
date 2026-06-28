@@ -15,6 +15,17 @@ function showSkeleton(boxId, count=3) {
 
 const API = "/api";
 
+// Returns true if a match's stage is a knockout round (two-way "to advance"
+// market, no Draw button). Mirrors the backend isKnockoutStage().
+function isKnockout(stage) {
+  if (!stage) return false;
+  const s = stage.toLowerCase();
+  return s.includes("round of 32") || s.includes("round of 16") ||
+         s.includes("quarter") || s.includes("semi") ||
+         s.includes("final") || s.includes("third place") ||
+         s.includes("3rd place") || s.includes("knockout");
+}
+
 let lastKnownPoints = null;
 let lastKnownRank = null;
 let predictedMatches = []; // module-level so confirmBet can update it immediately
@@ -532,10 +543,13 @@ function renderMatchCards(data) {
           timeZone: "Asia/Dubai"
         });
 
-        // A match is only bettable once REAL odds exist for all three outcomes.
-        // Until the odds API populates them, betting is disabled (no placeholder odds).
-        const oddsReady = match.odds_a && match.odds_draw && match.odds_b
-          && parseFloat(match.odds_a) > 0 && parseFloat(match.odds_draw) > 0 && parseFloat(match.odds_b) > 0;
+        // A match is only bettable once REAL odds exist.
+        // Knockouts are two-way (to advance) so they have no draw odds.
+        const isKO = isKnockout(match.stage);
+        const oddsReady = isKO
+          ? (match.odds_a && match.odds_b && parseFloat(match.odds_a) > 0 && parseFloat(match.odds_b) > 0)
+          : (match.odds_a && match.odds_draw && match.odds_b
+             && parseFloat(match.odds_a) > 0 && parseFloat(match.odds_draw) > 0 && parseFloat(match.odds_b) > 0);
 
         let actionHtml = "";
 
@@ -598,15 +612,15 @@ if (match.result) {
     <p style="font-size:0.82rem;color:#aaa;margin:8px 0 4px;">Change pick or amount anytime before close:</p>
     <div class="bet-options">
       <button class="bet-btn ${userPrediction.selected_team === match.team_a ? 'bet-btn-active' : ''}" onclick="selectBet(${match.id}, '${match.team_a}', ${match.odds_a || 2})">
-        <span class="bet-team">${match.team_a}</span>
+        <span class="bet-team">${match.team_a}${isKO ? ' <span class="adv-tag">to advance</span>' : ''}</span>
         <span class="bet-odds">${match.odds_a ? parseFloat(match.odds_a).toFixed(2) + 'x' : '2.00x'}</span>
       </button>
-      <button class="bet-btn draw-btn ${userPrediction.selected_team === 'DRAW' ? 'bet-btn-active' : ''}" onclick="selectBet(${match.id}, 'DRAW', ${match.odds_draw || 1.5})">
+      ${isKO ? '' : `<button class="bet-btn draw-btn ${userPrediction.selected_team === 'DRAW' ? 'bet-btn-active' : ''}" onclick="selectBet(${match.id}, 'DRAW', ${match.odds_draw || 1.5})">
         <span class="bet-team">Draw</span>
         <span class="bet-odds">${match.odds_draw ? parseFloat(match.odds_draw).toFixed(2) + 'x' : '1.50x'}</span>
-      </button>
+      </button>`}
       <button class="bet-btn ${userPrediction.selected_team === match.team_b ? 'bet-btn-active' : ''}" onclick="selectBet(${match.id}, '${match.team_b}', ${match.odds_b || 2})">
-        <span class="bet-team">${match.team_b}</span>
+        <span class="bet-team">${match.team_b}${isKO ? ' <span class="adv-tag">to advance</span>' : ''}</span>
         <span class="bet-odds">${match.odds_b ? parseFloat(match.odds_b).toFixed(2) + 'x' : '2.00x'}</span>
       </button>
     </div>
@@ -662,15 +676,15 @@ if (match.result) {
 
     <div class="bet-options">
       <button class="bet-btn" onclick="selectBet(${match.id}, '${match.team_a}', ${match.odds_a})">
-        <span class="bet-team">${match.team_a}</span>
+        <span class="bet-team">${match.team_a}${isKO ? ' <span class="adv-tag">to advance</span>' : ''}</span>
         <span class="bet-odds">${parseFloat(match.odds_a).toFixed(2)}x</span>
       </button>
-      <button class="bet-btn draw-btn" onclick="selectBet(${match.id}, 'DRAW', ${match.odds_draw})">
+      ${isKO ? '' : `<button class="bet-btn draw-btn" onclick="selectBet(${match.id}, 'DRAW', ${match.odds_draw})">
         <span class="bet-team">Draw</span>
         <span class="bet-odds">${parseFloat(match.odds_draw).toFixed(2)}x</span>
-      </button>
+      </button>`}
       <button class="bet-btn" onclick="selectBet(${match.id}, '${match.team_b}', ${match.odds_b})">
-        <span class="bet-team">${match.team_b}</span>
+        <span class="bet-team">${match.team_b}${isKO ? ' <span class="adv-tag">to advance</span>' : ''}</span>
         <span class="bet-odds">${parseFloat(match.odds_b).toFixed(2)}x</span>
       </button>
     </div>
