@@ -292,6 +292,7 @@ app.get("/api/my-predictions", auth, (req, res) => {
       predictions.points_used,
       predictions.odds_used,
       predictions.settled,
+      predictions.bet_type,
       predictions.created_at,
       matches.team_a,
       matches.team_b,
@@ -314,7 +315,7 @@ app.get("/api/my-predictions", auth, (req, res) => {
 app.get("/api/my-predicted-matches", auth, (req, res) => {
   res.set("Cache-Control", "no-store");
   db.all(
-    "SELECT match_id, selected_team, points_used, odds_used, created_at FROM predictions WHERE user_id = ?",
+    "SELECT id, match_id, selected_team, points_used, odds_used, bet_type, settled FROM predictions WHERE user_id = ?",
     [req.user.id],
     (err, rows) => {
       if (err) return res.status(500).json({ message: "Could not load predicted matches" });
@@ -1272,26 +1273,43 @@ app.post("/api/cancel-predict", auth, (req, res) => {
   const { matchId } = req.body;
   if (!matchId) return res.status(400).json({ message: "Match ID required" });
 
-  db.get("SELECT * FROM predictions WHERE user_id = ? AND match_id = ?", [req.user.id, matchId], (err, prediction) => {
-    if (err || !prediction) return res.status(404).json({ message: "No prediction found" });
-    if (prediction.settled) return res.status(400).json({ message: "Prediction already settled" });
-
-    // Check prediction window still open — free cancellation until window closes
-    db.get("SELECT prediction_close FROM matches WHERE id = ?", [matchId], (err, match) => {
-      if (err || !match) return res.status(404).json({ message: "Match not found" });
-      if (new Date() > new Date(match.prediction_close)) {
-        return res.status(400).json({ message: "Prediction window is closed" });
+  // Cancel ALL unsettled bets this user has on the match (moneyline + sidebets)
+  // and refund the full total. This powers the "cancel all & rebuild" flow.
+  db.all(
+    "SELECT * FROM predictions WHERE user_id = ? AND match_id = ? AND settled = 0",
+    [req.user.id, matchId],
+    (err, predictions) => {
+      if (err) return res.status(500).json({ message: "Could not look up bets" });
+      if (!predictions || predictions.length === 0) {
+        return res.status(404).json({ message: "No bets found on this match" });
       }
 
-      db.run("DELETE FROM predictions WHERE id = ?", [prediction.id], (err) => {
-        if (err) return res.status(500).json({ message: "Could not cancel prediction" });
-        db.run("UPDATE users SET points = points + ? WHERE id = ?", [prediction.points_used, req.user.id], (err) => {
-          if (err) return res.status(500).json({ message: "Prediction cancelled but refund failed" });
-          return res.json({ message: "Prediction cancelled and points refunded" });
-        });
+      db.get("SELECT prediction_close FROM matches WHERE id = ?", [matchId], (err, match) => {
+        if (err || !match) return res.status(404).json({ message: "Match not found" });
+        if (new Date() > new Date(match.prediction_close)) {
+          return res.status(400).json({ message: "Prediction window is closed" });
+        }
+
+        const totalRefund = predictions.reduce((sum, p) => sum + p.points_used, 0);
+
+        db.run(
+          "DELETE FROM predictions WHERE user_id = ? AND match_id = ? AND settled = 0",
+          [req.user.id, matchId],
+          (err) => {
+            if (err) return res.status(500).json({ message: "Could not cancel bets" });
+            db.run("UPDATE users SET points = points + ? WHERE id = ?", [totalRefund, req.user.id], (err) => {
+              if (err) return res.status(500).json({ message: "Bets cancelled but refund failed" });
+              return res.json({
+                message: `Cancelled ${predictions.length} bet(s), refunded ${totalRefund.toLocaleString()} points`,
+                refunded: totalRefund,
+                count: predictions.length
+              });
+            });
+          }
+        );
       });
-    });
-  });
+    }
+  );
 });
 
 
@@ -1301,19 +1319,23 @@ app.get("/api/active-bets", auth, (req, res) => {
   db.all(
     `SELECT
       users.username,
+      matches.id AS match_id,
       matches.team_a,
       matches.team_b,
       matches.match_time,
       matches.stage,
       matches.group_name,
+      matches.total_line,
       predictions.selected_team,
       predictions.points_used,
-      predictions.odds_used
+      predictions.odds_used,
+      predictions.bet_type,
+      predictions.created_at
      FROM predictions
      JOIN users ON predictions.user_id = users.id
      JOIN matches ON predictions.match_id = matches.id
      WHERE predictions.settled = 0
-     ORDER BY matches.match_time ASC, users.username ASC`,
+     ORDER BY matches.match_time ASC, users.username ASC, predictions.created_at ASC`,
     [],
     (err, rows) => {
       if (err) return res.status(500).json({ message: "Could not load active bets" });
