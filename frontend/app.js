@@ -105,6 +105,10 @@ function renderBetBuilder(match) {
       <div class="bb-market-body hidden" id="bb-body-${match.id}-${mkt.key}">
         <div class="bb-opts">${optButtons}</div>
         <div class="bb-stake">
+          <div class="bb-stake-top">
+            <span class="bb-stake-label">Stake</span>
+            <span class="bb-stake-val" id="bb-val-${match.id}-${mkt.key}">0 pts</span>
+          </div>
           <input type="range" class="bb-slider" id="bb-slider-${match.id}-${mkt.key}"
             min="0" max="${bal}" step="${sliderStep}" value="0"
             oninput="bbSlide(${match.id}, '${mkt.key}', this.value)">
@@ -112,9 +116,10 @@ function renderBetBuilder(match) {
             <input type="number" class="bb-amount" id="bb-amt-${match.id}-${mkt.key}"
               placeholder="0" min="0" max="${bal}" step="5" value=""
               oninput="bbType(${match.id}, '${mkt.key}', this.value)">
-            <span class="bb-stake-pts">pts</span>
             <button type="button" class="bb-max-btn" onclick="bbMax(${match.id}, '${mkt.key}')">Max</button>
           </div>
+          <div class="bb-leg-payout" id="bb-pay-${match.id}-${mkt.key}"></div>
+        </div>
         </div>
       </div>
     </div>`;
@@ -229,6 +234,24 @@ function bbRecalc(matchId) {
     const amtEl = document.getElementById(`bb-amt-${matchId}-${key}`);
     const amt = amtEl ? parseInt(amtEl.value) || 0 : 0;
     leg.amount = amt;
+
+    // Live per-leg value + payout shown right under that market's slider.
+    const valEl = document.getElementById(`bb-val-${matchId}-${key}`);
+    const payEl = document.getElementById(`bb-pay-${matchId}-${key}`);
+    if (valEl) valEl.textContent = `${amt.toLocaleString()} pts`;
+    if (payEl) {
+      if (leg.pick && amt > 0) {
+        const legRet = Math.floor(amt * leg.odds);
+        payEl.innerHTML = `${leg.label} @ ${leg.odds.toFixed(2)}x → wins <strong>${legRet.toLocaleString()}</strong> pts`;
+        payEl.style.display = 'block';
+      } else if (amt > 0 && !leg.pick) {
+        payEl.innerHTML = `Pick an option above`;
+        payEl.style.display = 'block';
+      } else {
+        payEl.style.display = 'none';
+      }
+    }
+
     if (leg.pick && amt > 0) {
       anyLeg = true;
       if (amt % 5 !== 0) anyInvalid = true;
