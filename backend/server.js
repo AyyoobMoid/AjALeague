@@ -165,11 +165,16 @@ app.get("/api/matches", (req, res) => {
 
 app.post("/api/predict", auth, (req, res) => {
   const { matchId, selectedTeam, pointsUsed } = req.body;
+  // betType defaults to moneyline so existing clients keep working unchanged.
+  const betType = (req.body.betType || "moneyline").toLowerCase();
   const amount = Number(pointsUsed);
 
   if (!matchId || !selectedTeam || !amount) return res.status(400).json({ message: "Prediction details missing" });
   if (amount <= 0) return res.status(400).json({ message: "Points must be greater than 0" });
   if (amount % 5 !== 0) return res.status(400).json({ message: "Points must be multiple of 5" });
+  if (!["moneyline", "total", "btts"].includes(betType)) {
+    return res.status(400).json({ message: "Invalid bet type" });
+  }
 
   db.get("SELECT points FROM users WHERE id = ?", [req.user.id], (err, user) => {
     if (err || !user) return res.status(404).json({ message: "User not found" });
@@ -188,36 +193,52 @@ app.post("/api/predict", auth, (req, res) => {
 
       const knockout = isKnockoutStage(match.stage);
 
-      // Reject bets on matches without real odds (no betting on placeholder/null odds).
-      // Knockout matches are two-way (to advance) so they have no draw odds.
-      if (knockout) {
-        if (!match.odds_a || !match.odds_b) {
-          return res.status(400).json({ message: "Odds are not available for this match yet" });
+      // Resolve the correct, server-side odds for the chosen market + selection.
+      // selectedTeam carries the selection: team name / "DRAW" / "OVER" / "UNDER" / "YES" / "NO".
+      let correctOdds;
+      const sel = String(selectedTeam).toUpperCase();
+
+      if (betType === "moneyline") {
+        if (knockout) {
+          if (!match.odds_a || !match.odds_b) return res.status(400).json({ message: "Odds are not available for this match yet" });
+        } else {
+          if (!match.odds_a || !match.odds_draw || !match.odds_b) return res.status(400).json({ message: "Odds are not available for this match yet" });
         }
-      } else {
-        if (!match.odds_a || !match.odds_draw || !match.odds_b) {
-          return res.status(400).json({ message: "Odds are not available for this match yet" });
+        if (selectedTeam === match.team_a) correctOdds = parseFloat(match.odds_a);
+        else if (selectedTeam === match.team_b) correctOdds = parseFloat(match.odds_b);
+        else if (selectedTeam === "DRAW") {
+          if (knockout) return res.status(400).json({ message: "No draw option in knockout matches — pick a team to advance" });
+          correctOdds = parseFloat(match.odds_draw);
         }
+        else return res.status(400).json({ message: "Invalid selection" });
+
+      } else if (betType === "total") {
+        if (!match.odds_over || !match.odds_under) {
+          return res.status(400).json({ message: "Over/Under odds are not available for this match yet" });
+        }
+        if (sel === "OVER") correctOdds = parseFloat(match.odds_over);
+        else if (sel === "UNDER") correctOdds = parseFloat(match.odds_under);
+        else return res.status(400).json({ message: "Invalid Over/Under selection" });
+
+      } else if (betType === "btts") {
+        if (!match.odds_btts_yes || !match.odds_btts_no) {
+          return res.status(400).json({ message: "Both Teams To Score odds are not available for this match yet" });
+        }
+        if (sel === "YES") correctOdds = parseFloat(match.odds_btts_yes);
+        else if (sel === "NO") correctOdds = parseFloat(match.odds_btts_no);
+        else return res.status(400).json({ message: "Invalid BTTS selection" });
       }
 
-      // Determine the correct stored odds for the selected outcome
-      let correctOdds;
-      if (selectedTeam === match.team_a) correctOdds = parseFloat(match.odds_a);
-      else if (selectedTeam === match.team_b) correctOdds = parseFloat(match.odds_b);
-      else if (selectedTeam === "DRAW") {
-        // No draw market in knockouts — a knockout always produces an advancer.
-        if (knockout) return res.status(400).json({ message: "No draw option in knockout matches — pick a team to advance" });
-        correctOdds = parseFloat(match.odds_draw);
-      }
-      else return res.status(400).json({ message: "Invalid selection" });
+      // Normalize the stored selection so settlement can match it reliably.
+      const storedSelection = (betType === "moneyline") ? selectedTeam : sel;
 
       // Lock in the odds from the DB, not whatever the client sent (prevents odds tampering)
       const oddsUsed = correctOdds;
       db.run(
-        "INSERT INTO predictions (user_id, match_id, selected_team, points_used, odds_used) VALUES (?, ?, ?, ?, ?)",
-        [req.user.id, matchId, selectedTeam, amount, oddsUsed],
+        "INSERT INTO predictions (user_id, match_id, selected_team, points_used, odds_used, bet_type) VALUES (?, ?, ?, ?, ?, ?)",
+        [req.user.id, matchId, storedSelection, amount, oddsUsed, betType],
         function (err) {
-          if (err) return res.status(400).json({ message: "You already predicted this match" });
+          if (err) return res.status(400).json({ message: "You already placed this bet on this match" });
           db.run("UPDATE users SET points = points - ? WHERE id = ?", [amount, req.user.id], function (err) {
             if (err) return res.status(500).json({ message: "Prediction saved but points could not be updated" });
             return res.json({ message: "Prediction submitted successfully" });
@@ -365,10 +386,19 @@ app.get("/api/my-stats", auth, (req, res) => {
 
 // ─── SETTLE LOGIC (shared between admin manual + auto) ───────────────────────
 
-function settleMatch(matchId, result, callback) {
+// settleMatch settles all open predictions on a match.
+//   result      = moneyline outcome (team name or "DRAW")
+//   homeGoals/awayGoals = full-time goals (optional). When provided, sidebet
+//                 markets (total, btts) settle too. When absent (e.g. a manual
+//                 result with no score), sidebets are REFUNDED rather than lost.
+function settleMatch(matchId, result, callback, homeGoals, awayGoals) {
   db.get("SELECT * FROM matches WHERE id = ?", [matchId], (err, match) => {
     if (err || !match) return callback(new Error("Match not found"));
     if (match.status === "settled") return callback(null, "already_settled");
+
+    const haveScores = (typeof homeGoals === "number" && typeof awayGoals === "number");
+    const totalGoals = haveScores ? homeGoals + awayGoals : null;
+    const bothScored = haveScores ? (homeGoals > 0 && awayGoals > 0) : null;
 
     db.run(
       "UPDATE matches SET result = ?, status = 'settled', settled_at = CURRENT_TIMESTAMP WHERE id = ?",
@@ -379,32 +409,49 @@ function settleMatch(matchId, result, callback) {
         db.all("SELECT * FROM predictions WHERE match_id = ? AND settled = 0", [matchId], (err, predictions) => {
           if (err) return callback(err);
 
-          if (predictions.length === 0) {
+          const writeMsg = (cb) => {
             const ko = isKnockoutStage(match.stage);
-            const msg = result === "DRAW"
+            let msg = result === "DRAW"
               ? `${match.team_a} drew with ${match.team_b}`
               : ko
                 ? `${result} advanced past ${result === match.team_a ? match.team_b : match.team_a}`
                 : `${result} defeated ${result === match.team_a ? match.team_b : match.team_a}`;
-            db.run("UPDATE matches SET settlement_message = ? WHERE id = ?", [msg, matchId], () => {
-              callback(null, `settled_no_predictions`);
-            });
+            if (haveScores) msg += ` (${homeGoals}-${awayGoals})`;
+            db.run("UPDATE matches SET settlement_message = ? WHERE id = ?", [msg, matchId], cb);
+          };
+
+          if (predictions.length === 0) {
+            writeMsg(() => callback(null, `settled_no_predictions`));
             return;
           }
 
           let completed = 0;
           predictions.forEach((prediction) => {
+            const type = (prediction.bet_type || "moneyline").toLowerCase();
+            const odds = prediction.odds_used ? parseFloat(prediction.odds_used) : null;
+            const sel = String(prediction.selected_team).toUpperCase();
             let reward = 0;
-            const isWin = prediction.selected_team === result;
-            // Only pay if pick exactly matches result
-            if (prediction.selected_team === result) {
-              const odds = prediction.odds_used ? parseFloat(prediction.odds_used) : null;
-              if (odds) {
-                reward = Math.floor(prediction.points_used * odds);
+
+            if (type === "moneyline") {
+              // Pay only if the pick exactly matches the result.
+              if (prediction.selected_team === result) {
+                reward = odds ? Math.floor(prediction.points_used * odds) : prediction.points_used;
+              }
+            } else if (type === "total") {
+              if (!haveScores) {
+                reward = prediction.points_used; // can't settle without a score → refund
               } else {
-                // Safety net: a correct bet with no locked odds refunds the stake
-                // (should never happen in normal flow, but prevents silent loss)
-                reward = prediction.points_used;
+                const line = match.total_line ? parseFloat(match.total_line) : 2.5;
+                const isOver = totalGoals > line;
+                const win = (sel === "OVER" && isOver) || (sel === "UNDER" && !isOver);
+                if (win) reward = odds ? Math.floor(prediction.points_used * odds) : prediction.points_used;
+              }
+            } else if (type === "btts") {
+              if (!haveScores) {
+                reward = prediction.points_used; // refund if unsettleable
+              } else {
+                const win = (sel === "YES" && bothScored) || (sel === "NO" && !bothScored);
+                if (win) reward = odds ? Math.floor(prediction.points_used * odds) : prediction.points_used;
               }
             }
 
@@ -412,15 +459,7 @@ function settleMatch(matchId, result, callback) {
               db.run("UPDATE predictions SET settled = 1 WHERE id = ?", [prediction.id], () => {
                 completed++;
                 if (completed === predictions.length) {
-                  const ko = isKnockoutStage(match.stage);
-                  const msg = result === "DRAW"
-                    ? `${match.team_a} drew with ${match.team_b}`
-                    : ko
-                      ? `${result} advanced past ${result === match.team_a ? match.team_b : match.team_a}`
-                      : `${result} defeated ${result === match.team_a ? match.team_b : match.team_a}`;
-                  db.run("UPDATE matches SET settlement_message = ? WHERE id = ?", [msg, matchId], () => {
-                    callback(null, "settled");
-                  });
+                  writeMsg(() => callback(null, "settled"));
                 }
               });
             });
@@ -437,14 +476,22 @@ app.post("/api/admin/result", auth, adminOnly, (req, res) => {
   const { matchId, result } = req.body;
   if (!matchId || !result) return res.status(400).json({ message: "Match ID and result required" });
 
+  // Optional full-time goals so the admin can settle Over/Under + BTTS sidebets too.
+  // If omitted, sidebets on this match are refunded (can't be settled without a score).
+  const hg = (req.body.homeGoals === undefined || req.body.homeGoals === null || req.body.homeGoals === "")
+    ? undefined : Number(req.body.homeGoals);
+  const ag = (req.body.awayGoals === undefined || req.body.awayGoals === null || req.body.awayGoals === "")
+    ? undefined : Number(req.body.awayGoals);
+  const validGoals = (typeof hg === "number" && !isNaN(hg) && typeof ag === "number" && !isNaN(ag));
+
   db.get("SELECT status FROM matches WHERE id = ?", [matchId], (err, match) => {
     if (err || !match) return res.status(404).json({ message: "Match not found" });
     if (match.status === "settled") return res.status(400).json({ message: "This match has already been settled" });
 
     settleMatch(matchId, result, (err, status) => {
       if (err) return res.status(500).json({ message: "Settlement failed" });
-      res.json({ message: `Result settled successfully: ${result}` });
-    });
+      res.json({ message: `Result settled successfully: ${result}` + (validGoals ? ` (${hg}-${ag})` : " — no score given, sidebets refunded") });
+    }, validGoals ? hg : undefined, validGoals ? ag : undefined);
   });
 });
 
@@ -521,12 +568,22 @@ async function autoSettleMatches() {
           }
 
           if (dbMatch) {
-            // If teams are stored reversed vs API order, result label is already correct
-            // (result is already set to the winning team's DB name via toDbName())
+            // Map API home/away goals onto the DB's team_a/team_b orientation so
+            // sidebets (total goals, BTTS) settle correctly regardless of order.
+            // Note: for knockouts decided on penalties, fullTime goals are the
+            // 90+ET score — penalties are NOT counted toward O/U or BTTS (standard rule).
+            let goalsA, goalsB;
+            if (typeof homeScore === "number" && typeof awayScore === "number") {
+              if (normalizeTeam(dbMatch.team_a) === homeTeam) {
+                goalsA = homeScore; goalsB = awayScore;
+              } else {
+                goalsA = awayScore; goalsB = homeScore;
+              }
+            }
             settleMatch(dbMatch.id, result, (err, status) => {
               if (err) console.log(`Auto-settle error for match ${dbMatch.id}:`, err.message);
-              else if (status === "settled") console.log(`Auto-settled: ${homeTeam} vs ${awayTeam} → ${result}`);
-            });
+              else if (status === "settled") console.log(`Auto-settled: ${homeTeam} vs ${awayTeam} → ${result}` + (goalsA !== undefined ? ` (${goalsA}-${goalsB})` : ""));
+            }, goalsA, goalsB);
           }
         }
       }
@@ -679,6 +736,94 @@ async function fetchAndStoreOdds() {
   }
 }
 
+// ─── SIDEBET ODDS (Over/Under 2.5 + BTTS) ────────────────────────────────────
+// These markets live on the per-event endpoint (/events/{id}/odds), so this
+// costs ONE API call per unsettled match. To respect the monthly quota, run
+// this on a SLOW cron (once or twice a day) — knockout sidebet lines barely
+// move. Pins the totals line to 2.5 for consistency.
+function applyTwoWayMargin(oddsA, oddsB, margin = 1.05) {
+  if (!oddsA || !oddsB) return { a: null, b: null };
+  const pa = 1 / oddsA, pb = 1 / oddsB;
+  const tot = pa + pb;
+  return {
+    a: Math.round((1 / ((pa / tot) * margin)) * 100) / 100,
+    b: Math.round((1 / ((pb / tot) * margin)) * 100) / 100
+  };
+}
+
+async function fetchAndStoreSidebets() {
+  try {
+    const fetch = require("node-fetch");
+
+    // 1. Lightweight events list (cheap) to map fixtures → event IDs.
+    const evRes = await fetch(
+      `https://api.the-odds-api.com/v4/sports/soccer_fifa_world_cup/events?apiKey=${ODDS_API_KEY}`,
+      { headers: { "Accept": "application/json" } }
+    );
+    if (!evRes.ok) { console.log("Sidebet events error:", evRes.status); return; }
+    const events = await evRes.json();
+
+    // 2. Which DB matches still need sidebet odds (unsettled only).
+    db.all("SELECT * FROM matches WHERE status != 'settled'", [], async (err, matches) => {
+      if (err || !matches || matches.length === 0) return;
+
+      for (const dbMatch of matches) {
+        const ev = events.find(e =>
+          (normalizeTeam(e.home_team) === normalizeTeam(dbMatch.team_a) && normalizeTeam(e.away_team) === normalizeTeam(dbMatch.team_b)) ||
+          (normalizeTeam(e.home_team) === normalizeTeam(dbMatch.team_b) && normalizeTeam(e.away_team) === normalizeTeam(dbMatch.team_a))
+        );
+        if (!ev) continue;
+
+        // 3. One per-event call for totals + btts. (Counts against quota.)
+        let evtOdds;
+        try {
+          const r = await fetch(
+            `https://api.the-odds-api.com/v4/sports/soccer_fifa_world_cup/events/${ev.id}/odds?regions=us&markets=totals,btts&oddsFormat=decimal&apiKey=${ODDS_API_KEY}`,
+            { headers: { "Accept": "application/json" } }
+          );
+          if (!r.ok) { console.log(`Sidebet odds ${dbMatch.team_a} v ${dbMatch.team_b}: ${r.status}`); continue; }
+          evtOdds = await r.json();
+        } catch (e) { console.log("Sidebet per-event fetch error:", e.message); continue; }
+
+        if (!evtOdds.bookmakers || evtOdds.bookmakers.length === 0) continue;
+
+        // 4. Average Over/Under at the 2.5 line, and BTTS Yes/No, across books.
+        const over = [], under = [], yes = [], no = [];
+        evtOdds.bookmakers.forEach(bk => {
+          (bk.markets || []).forEach(mk => {
+            if (mk.key === "totals") {
+              mk.outcomes.forEach(o => {
+                if (o.point === 2.5 && o.name === "Over") over.push(o.price);
+                if (o.point === 2.5 && o.name === "Under") under.push(o.price);
+              });
+            } else if (mk.key === "btts") {
+              mk.outcomes.forEach(o => {
+                if (o.name === "Yes") yes.push(o.price);
+                if (o.name === "No") no.push(o.price);
+              });
+            }
+          });
+        });
+        const avg = arr => arr.length ? Math.round((arr.reduce((a, b) => a + b, 0) / arr.length) * 100) / 100 : null;
+
+        const ou = applyTwoWayMargin(avg(over), avg(under), 1.05);
+        const bt = applyTwoWayMargin(avg(yes), avg(no), 1.05);
+
+        // 5. Store whatever we got (only overwrite columns we have data for).
+        const sets = [], vals = [];
+        if (ou.a && ou.b) { sets.push("total_line = ?", "odds_over = ?", "odds_under = ?"); vals.push(2.5, ou.a, ou.b); }
+        if (bt.a && bt.b) { sets.push("odds_btts_yes = ?", "odds_btts_no = ?"); vals.push(bt.a, bt.b); }
+        if (sets.length === 0) continue;
+        vals.push(dbMatch.id);
+        db.run(`UPDATE matches SET ${sets.join(", ")} WHERE id = ?`, vals,
+          () => console.log(`Sidebets: ${dbMatch.team_a} v ${dbMatch.team_b} | O/U2.5 ${ou.a}/${ou.b} | BTTS ${bt.a}/${bt.b}`));
+      }
+    });
+  } catch (err) {
+    console.log("Sidebet fetch error:", err.message);
+  }
+}
+
 // Returns true if a match's stage is a knockout round (no draws; settle on
 // who advances). Group-stage matches return false and keep 3-way settlement.
 function isKnockoutStage(stage) {
@@ -725,6 +870,17 @@ cron.schedule("0 */2 * * *", () => {
 
 // Also fetch on startup
 setTimeout(fetchAndStoreOdds, 5000);
+
+// Fetch SIDEBET odds (Over/Under + BTTS) once a day at 06:00.
+// These use per-event API calls, so a daily cadence keeps us well under the
+// monthly request quota. Lines barely move once set; refresh manually via the
+// admin panel if a fixture is added mid-day.
+cron.schedule("0 6 * * *", () => {
+  console.log("Fetching sidebet odds (daily cycle)...");
+  fetchAndStoreSidebets();
+});
+// One sidebet fetch shortly after startup so newly-added matches get lines.
+setTimeout(fetchAndStoreSidebets, 12000);
 
 // Run auto-settle every 5 minutes
 cron.schedule("*/5 * * * *", () => {
@@ -982,6 +1138,13 @@ app.post("/api/admin/set-odds", auth, adminOnly, (req, res) => {
 app.post("/api/admin/refresh-odds", auth, adminOnly, (req, res) => {
   fetchAndStoreOdds();
   res.json({ message: "Odds refresh triggered" });
+});
+
+// Manually refresh sidebet (Over/Under + BTTS) odds. Uses per-event API calls,
+// so use sparingly to preserve quota.
+app.post("/api/admin/refresh-sidebets", auth, adminOnly, (req, res) => {
+  fetchAndStoreSidebets();
+  res.json({ message: "Sidebet odds refresh triggered (Over/Under + BTTS)" });
 });
 
 
