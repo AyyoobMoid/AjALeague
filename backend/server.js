@@ -263,12 +263,15 @@ app.get("/api/user-history/:username", auth, (req, res) => {
         predictions.points_used,
         predictions.odds_used,
         predictions.settled,
+        predictions.bet_type,
         matches.team_a,
         matches.team_b,
         matches.match_time,
         matches.result,
         matches.stage,
-        matches.group_name
+        matches.group_name,
+        matches.settlement_message,
+        matches.total_line
        FROM predictions
        JOIN matches ON predictions.match_id = matches.id
        WHERE predictions.user_id = ? AND predictions.settled = 1
@@ -276,7 +279,11 @@ app.get("/api/user-history/:username", auth, (req, res) => {
       [user.id],
       (err, rows) => {
         if (err) return res.status(500).json({ message: "Could not load history" });
-        return res.json({ user: { username: user.username, fullName: user.full_name, points: user.points }, history: rows });
+        const history = rows.map(r => {
+          const o = settledOutcome(r);
+          return { ...r, won: o.won, payout: o.payout, profit: o.profit };
+        });
+        return res.json({ user: { username: user.username, fullName: user.full_name, points: user.points }, history });
       }
     );
   });
@@ -299,7 +306,9 @@ app.get("/api/my-predictions", auth, (req, res) => {
       matches.match_time,
       matches.result,
       matches.stage,
-      matches.group_name
+      matches.group_name,
+      matches.settlement_message,
+      matches.total_line
      FROM predictions
      JOIN matches ON predictions.match_id = matches.id
      WHERE predictions.user_id = ?
@@ -307,7 +316,15 @@ app.get("/api/my-predictions", auth, (req, res) => {
     [req.user.id],
     (err, rows) => {
       if (err) return res.status(500).json({ message: "Could not load prediction history" });
-      return res.json(rows);
+      // Attach correct per-market outcome for settled bets.
+      const out = rows.map(r => {
+        if (r.settled && r.result) {
+          const o = settledOutcome(r);
+          return { ...r, won: o.won, payout: o.payout, profit: o.profit };
+        }
+        return { ...r, won: null, payout: 0, profit: 0 };
+      });
+      return res.json(out);
     }
   );
 });
@@ -327,7 +344,8 @@ app.get("/api/my-predicted-matches", auth, (req, res) => {
 app.get("/api/my-stats", auth, (req, res) => {
   db.all(
     `SELECT predictions.selected_team, predictions.points_used, predictions.odds_used,
-            predictions.settled, matches.result
+            predictions.settled, predictions.bet_type,
+            matches.result, matches.settlement_message, matches.total_line
      FROM predictions
      JOIN matches ON predictions.match_id = matches.id
      WHERE predictions.user_id = ?`,
@@ -337,6 +355,7 @@ app.get("/api/my-stats", auth, (req, res) => {
 
       let totalPredictions = rows.length, correct = 0, losses = 0, pending = 0, totalPointsUsed = 0;
       let totalPotentialProfit = 0, totalStakeForRR = 0;
+      let totalReturned = 0, totalSettledStake = 0;
 
       rows.forEach((item) => {
         totalPointsUsed += item.points_used;
@@ -350,32 +369,23 @@ app.get("/api/my-stats", auth, (req, res) => {
 
         if (!item.settled || !item.result) {
           pending++;
-        } else if (item.selected_team === item.result) {
-          correct++;
         } else {
-          losses++;
+          const o = settledOutcome(item);
+          if (o.won === true) correct++;
+          else if (o.won === false) losses++;
+          // o.won === null → refund, counts as neither
+          totalSettledStake += item.points_used;
+          totalReturned += o.payout; // payout already correct (incl. refund = stake)
         }
       });
 
       const settled = correct + losses;
       const successRate = settled > 0 ? Math.round((correct / settled) * 100) : 0;
 
-      // R:R = avg potential profit : avg stake
       const rrRatio = totalStakeForRR > 0
         ? (totalPotentialProfit / totalStakeForRR).toFixed(2)
         : null;
 
-      // ROI = (total returned - total staked) / total staked * 100 — settled bets only
-      // We need to compute this from rows
-      let totalReturned = 0, totalSettledStake = 0;
-      rows.forEach(item => {
-        if (item.settled && item.result) {
-          totalSettledStake += item.points_used;
-          if (item.selected_team === item.result && item.odds_used > 0) {
-            totalReturned += Math.floor(item.points_used * parseFloat(item.odds_used));
-          }
-        }
-      });
       const roi = totalSettledStake > 0
         ? ((totalReturned - totalSettledStake) / totalSettledStake * 100).toFixed(1)
         : null;
@@ -836,6 +846,48 @@ function isKnockoutStage(stage) {
          s.includes("3rd place") || s.includes("knockout");
 }
 
+// Determine whether a SETTLED bet won, correctly per market type.
+// Sidebets (total/btts) need the full-time score, which settlement appends to
+// settlement_message as "(a-b)". Returns true (won), false (lost), or null
+// (can't determine — e.g. a sidebet refunded with no score recorded).
+function evaluateBet(betType, selectedTeam, result, settlementMessage, totalLine) {
+  const type = (betType || "moneyline").toLowerCase();
+  if (type === "moneyline") {
+    return selectedTeam === result;
+  }
+  const m = settlementMessage && settlementMessage.match(/\((\d+)\s*-\s*(\d+)\)/);
+  if (!m) return null;
+  const ga = parseInt(m[1], 10), gb = parseInt(m[2], 10);
+  const sel = String(selectedTeam).toUpperCase();
+  if (type === "total") {
+    const line = totalLine ? parseFloat(totalLine) : 2.5;
+    const isOver = (ga + gb) > line;
+    return (sel === "OVER" && isOver) || (sel === "UNDER" && !isOver);
+  }
+  if (type === "btts") {
+    const both = ga > 0 && gb > 0;
+    return (sel === "YES" && both) || (sel === "NO" && !both);
+  }
+  return null;
+}
+
+// Given a settled prediction + match context, return {won, payout, profit}.
+// Encapsulates the won/refund/loss money logic so every endpoint agrees.
+function settledOutcome(row) {
+  const won = evaluateBet(row.bet_type, row.selected_team, row.result, row.settlement_message, row.total_line);
+  const odds = row.odds_used ? parseFloat(row.odds_used) : null;
+  if (won === true) {
+    const payout = odds ? Math.floor(row.points_used * odds) : row.points_used;
+    return { won: true, payout, profit: payout - row.points_used };
+  }
+  if (won === false) {
+    return { won: false, payout: 0, profit: -row.points_used };
+  }
+  // null → refund/push (sidebet with no recorded score)
+  return { won: null, payout: row.points_used, profit: 0 };
+}
+
+
 function normalizeTeam(name) {
   if (!name) return "";
   // Strip accents and normalize whitespace so "México" === "Mexico", etc.
@@ -1008,19 +1060,24 @@ app.get("/api/user-profile/:username", auth, (req, res) => {
       if (err || !user) return res.status(404).json({ message: "User not found" });
 
       db.all(
-        `SELECT predictions.selected_team, matches.result
+        `SELECT predictions.selected_team, predictions.bet_type, predictions.settled,
+                matches.result, matches.settlement_message, matches.total_line
          FROM predictions JOIN matches ON predictions.match_id = matches.id
          WHERE predictions.user_id = ?`,
         [user.id],
         (err, predictions) => {
           if (err) return res.status(500).json({ message: "Could not load profile stats" });
 
-          let wins = 0;
+          let wins = 0, settledCount = 0;
           predictions.forEach((p) => {
-            if (p.result && p.selected_team === p.result) wins++;
+            if (!p.result) return;
+            const won = evaluateBet(p.bet_type, p.selected_team, p.result, p.settlement_message, p.total_line);
+            if (won === true) { wins++; settledCount++; }
+            else if (won === false) { settledCount++; }
+            // null → refund, not counted
           });
 
-          const successRate = predictions.length > 0 ? Math.round((wins / predictions.length) * 100) : 0;
+          const successRate = settledCount > 0 ? Math.round((wins / settledCount) * 100) : 0;
           res.json({
             username: user.username, fullName: user.full_name, roomNumber: user.room_number,
             country: user.country, joined: user.created_at, points: user.points,
@@ -1350,8 +1407,8 @@ app.get("/api/active-bets", auth, (req, res) => {
 app.get("/api/house-total", (req, res) => {
   db.all(
     `SELECT predictions.points_used, predictions.odds_used, predictions.settled,
-            predictions.selected_team, matches.result, matches.odds_a, matches.odds_b,
-            matches.odds_draw, matches.team_a
+            predictions.selected_team, predictions.bet_type,
+            matches.result, matches.settlement_message, matches.total_line
      FROM predictions
      JOIN matches ON predictions.match_id = matches.id
      WHERE predictions.settled = 1`,
@@ -1361,11 +1418,10 @@ app.get("/api/house-total", (req, res) => {
 
       let houseTotal = 0;
       rows.forEach(p => {
-        const staked = p.points_used;
-        const isCorrect = p.selected_team === p.result;
-        const odds = parseFloat(p.odds_used) || null;
-        const payout = isCorrect && odds ? Math.floor(staked * odds) : 0;
-        houseTotal += staked - payout;
+        const o = settledOutcome(p);
+        // House keeps the stake and pays out the (correct) payout. A refund
+        // (payout === stake) nets zero for the house, which is right.
+        houseTotal += p.points_used - o.payout;
       });
 
       res.json({ houseTotal });
@@ -1386,8 +1442,9 @@ app.get("/api/my-recent-results", auth, (req, res) => {
   const excludeClause = seenIds.length > 0 ? `AND matches.id NOT IN (${seenIds.join(",")})` : "";
 
   db.all(
-    `SELECT predictions.selected_team, predictions.points_used, predictions.odds_used,
-            matches.id AS match_id, matches.team_a, matches.team_b, matches.result, matches.settled_at
+    `SELECT predictions.selected_team, predictions.points_used, predictions.odds_used, predictions.bet_type,
+            matches.id AS match_id, matches.team_a, matches.team_b, matches.result,
+            matches.settled_at, matches.settlement_message, matches.total_line
      FROM predictions
      JOIN matches ON predictions.match_id = matches.id
      WHERE predictions.user_id = ? AND predictions.settled = 1
@@ -1399,19 +1456,31 @@ app.get("/api/my-recent-results", auth, (req, res) => {
       if (err) return res.status(500).json({ message: "Could not load recent results" });
 
       const results = rows.map(r => {
-        const isCorrect = r.selected_team === r.result;
-        const odds = r.odds_used ? parseFloat(r.odds_used) : null;
-        const payout = isCorrect && odds ? Math.floor(r.points_used * odds) : 0;
+        const o = settledOutcome(r);
+        const type = (r.bet_type || "moneyline").toLowerCase();
+        const line = r.total_line ? parseFloat(r.total_line) : 2.5;
+        // Friendly pick label per market.
+        let pickLabel = r.selected_team;
+        if (type === "total") pickLabel = `Total ${r.selected_team === "OVER" ? "Over" : "Under"} ${line}`;
+        else if (type === "btts") pickLabel = `BTTS ${r.selected_team === "YES" ? "Yes" : "No"}`;
+        // For sidebets, the meaningful "result" is the score, not the match winner.
+        let resultText = r.result;
+        if (type !== "moneyline") {
+          const m = r.settlement_message && r.settlement_message.match(/\((\d+)\s*-\s*(\d+)\)/);
+          resultText = m ? `${m[1]}-${m[2]}` : (r.result || "settled");
+        }
         return {
           matchId: r.match_id,
           match: `${r.team_a} vs ${r.team_b}`,
-          pick: r.selected_team,
+          pick: pickLabel,
+          betType: type,
           odds: r.odds_used,
-          result: r.result,
+          result: resultText,
           stake: r.points_used,
-          won: isCorrect,
-          payout: payout,
-          profit: isCorrect ? payout - r.points_used : -r.points_used
+          won: o.won === true,
+          refunded: o.won === null,
+          payout: o.payout,
+          profit: o.profit
         };
       });
 
