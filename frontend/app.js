@@ -26,56 +26,253 @@ function isKnockout(stage) {
          s.includes("3rd place") || s.includes("knockout");
 }
 
-// Renders the optional sidebet markets (Over/Under 2.5 goals, Both Teams To
-// Score) beneath a match's moneyline. Each market is an INDEPENDENT bet — a
-// player can place moneyline + over/under + BTTS on the same match (no parlay).
-// A market only appears once its odds have been fetched from the API.
-function renderSidebets(match) {
-  const hasOU = match.odds_over && match.odds_under
-    && parseFloat(match.odds_over) > 0 && parseFloat(match.odds_under) > 0;
-  const hasBTTS = match.odds_btts_yes && match.odds_btts_no
-    && parseFloat(match.odds_btts_yes) > 0 && parseFloat(match.odds_btts_no) > 0;
-  if (!hasOU && !hasBTTS) return "";
+// ─── BET BUILDER ─────────────────────────────────────────────────────────────
+// A single match card lets a player tick any of the available markets
+// (Match Result / To Advance, Total Goals, Both Teams To Score), enter an
+// amount for each, see a live receipt, and place them all with one button.
+// Each leg is an INDEPENDENT bet (no parlay) — fired sequentially to /api/predict.
+// Editing = cancel ALL bets on the match and rebuild (rewards early lock-in).
 
-  const line = match.total_line ? parseFloat(match.total_line) : 2.5;
+// Build the list of markets available for a match, with their two options each.
+function marketsFor(match) {
+  const isKO = isKnockout(match.stage);
+  const markets = [];
 
-  const market = (key, title, subtitle, optA, optB) => {
-    const k = match.id + ":" + key;
+  // Match result / advance
+  const mlReady = isKO
+    ? (match.odds_a && match.odds_b && +match.odds_a > 0 && +match.odds_b > 0)
+    : (match.odds_a && match.odds_draw && match.odds_b && +match.odds_a > 0 && +match.odds_draw > 0 && +match.odds_b > 0);
+  if (mlReady) {
+    const opts = [{ label: match.team_a + (isKO ? ' to advance' : ''), val: match.team_a, odds: +match.odds_a }];
+    if (!isKO) opts.push({ label: 'Draw', val: 'DRAW', odds: +match.odds_draw });
+    opts.push({ label: match.team_b + (isKO ? ' to advance' : ''), val: match.team_b, odds: +match.odds_b });
+    markets.push({ key: 'moneyline', title: isKO ? 'To Advance' : 'Match Result', options: opts });
+  }
+
+  // Total goals (Over/Under)
+  if (match.odds_over && match.odds_under && +match.odds_over > 0 && +match.odds_under > 0) {
+    const line = match.total_line ? +match.total_line : 2.5;
+    markets.push({
+      key: 'total', title: 'Total Goals', subtitle: 'Over/Under ' + line,
+      options: [
+        { label: 'Over ' + line, val: 'OVER', odds: +match.odds_over },
+        { label: 'Under ' + line, val: 'UNDER', odds: +match.odds_under }
+      ]
+    });
+  }
+
+  // Both teams to score
+  if (match.odds_btts_yes && match.odds_btts_no && +match.odds_btts_yes > 0 && +match.odds_btts_no > 0) {
+    markets.push({
+      key: 'btts', title: 'Both Teams To Score', subtitle: 'Yes/No',
+      options: [
+        { label: 'Yes', val: 'YES', odds: +match.odds_btts_yes },
+        { label: 'No', val: 'NO', odds: +match.odds_btts_no }
+      ]
+    });
+  }
+  return markets;
+}
+
+// Renders the interactive builder for a match with no bets yet on it.
+function renderBetBuilder(match) {
+  const markets = marketsFor(match);
+  if (markets.length === 0) return '';
+
+  const marketHtml = markets.map(mkt => {
+    const optButtons = mkt.options.map(o =>
+      `<button type="button" class="bb-opt" data-odds="${o.odds}" data-val="${o.val.replace(/"/g, '&quot;')}"
+         onclick="bbPick(${match.id}, '${mkt.key}', this)">
+         <span class="bb-opt-label">${o.label}</span>
+         <span class="bb-opt-odds">${o.odds.toFixed(2)}x</span>
+       </button>`
+    ).join('');
+
     return `
-    <div class="sidebet-market">
-      <div class="sidebet-head">${title} <span class="sidebet-sub">${subtitle}</span></div>
-      <div class="bet-options sidebet-options">
-        <button class="bet-btn" onclick="selectBet(${match.id}, '${optA.val}', ${optA.odds}, '${key}')">
-          <span class="bet-team">${optA.label}</span>
-          <span class="bet-odds">${parseFloat(optA.odds).toFixed(2)}x</span>
-        </button>
-        <button class="bet-btn" onclick="selectBet(${match.id}, '${optB.val}', ${optB.odds}, '${key}')">
-          <span class="bet-team">${optB.label}</span>
-          <span class="bet-odds">${parseFloat(optB.odds).toFixed(2)}x</span>
-        </button>
-      </div>
-      <div id="bet-slip-${k}" class="bet-slip hidden">
-        <p class="bet-slip-preview" id="bet-preview-${k}"></p>
-        <input type="number" id="points-${k}" placeholder="Points to bet (multiples of 5)" min="5" step="5"
-          oninput="updateBetPreview(${match.id}, '${key}')">
-        <button class="confirm-btn" onclick="confirmBet(${match.id}, false, '${key}')">Confirm Bet</button>
+    <div class="bb-market" data-market="${mkt.key}">
+      <label class="bb-market-head">
+        <input type="checkbox" class="bb-tick" onchange="bbToggle(${match.id}, '${mkt.key}', this.checked)">
+        <span class="bb-market-title">${mkt.title}${mkt.subtitle ? ` <span class="bb-sub">${mkt.subtitle}</span>` : ''}</span>
+      </label>
+      <div class="bb-market-body hidden" id="bb-body-${match.id}-${mkt.key}">
+        <div class="bb-opts">${optButtons}</div>
+        <input type="number" class="bb-amount" id="bb-amt-${match.id}-${mkt.key}"
+          placeholder="Points (multiples of 5)" min="5" step="5"
+          oninput="bbRecalc(${match.id})">
       </div>
     </div>`;
-  };
+  }).join('');
 
-  let html = `<div class="sidebets"><div class="sidebets-title">⚡ Side bets <span class="sidebets-note">— extra bets on this match, each settled on its own</span></div>`;
-  if (hasOU) {
-    html += market("total", `Total Goals`, `Over/Under ${line}`,
-      { label: `Over ${line}`, val: "OVER", odds: match.odds_over },
-      { label: `Under ${line}`, val: "UNDER", odds: match.odds_under });
+  return `
+  <div class="bet-builder" id="bet-builder-${match.id}">
+    <p class="bb-intro">Tick the bets you want, enter an amount for each, then place them all at once.</p>
+    ${marketHtml}
+    <div class="bb-receipt hidden" id="bb-receipt-${match.id}">
+      <div class="bb-receipt-title">📋 Your slip</div>
+      <div id="bb-receipt-lines-${match.id}"></div>
+      <div class="bb-receipt-total" id="bb-receipt-total-${match.id}"></div>
+      <p class="bb-receipt-note">Each bet wins or loses on its own — this isn't a combo.</p>
+    </div>
+    <button class="confirm-btn bb-place-btn" id="bb-place-${match.id}" onclick="bbPlace(${match.id})" disabled>Place Bets</button>
+  </div>`;
+}
+
+// Per-match builder state: { matchId: { marketKey: {pick, odds, label, amount} } }
+const builderState = {};
+
+function bbToggle(matchId, marketKey, checked) {
+  const body = document.getElementById(`bb-body-${matchId}-${marketKey}`);
+  if (body) body.classList.toggle('hidden', !checked);
+  if (!builderState[matchId]) builderState[matchId] = {};
+  if (checked) {
+    if (!builderState[matchId][marketKey]) builderState[matchId][marketKey] = { pick: null, odds: null, label: null, amount: 0 };
+  } else {
+    delete builderState[matchId][marketKey];
   }
-  if (hasBTTS) {
-    html += market("btts", `Both Teams To Score`, `Yes/No`,
-      { label: "Yes", val: "YES", odds: match.odds_btts_yes },
-      { label: "No", val: "NO", odds: match.odds_btts_no });
+  bbRecalc(matchId);
+}
+
+function bbPick(matchId, marketKey, btn) {
+  // Highlight the chosen option within this market
+  const market = btn.closest('.bb-market');
+  market.querySelectorAll('.bb-opt').forEach(b => b.classList.remove('bb-opt-active'));
+  btn.classList.add('bb-opt-active');
+
+  if (!builderState[matchId]) builderState[matchId] = {};
+  if (!builderState[matchId][marketKey]) builderState[matchId][marketKey] = { amount: 0 };
+  builderState[matchId][marketKey].pick = btn.dataset.val;
+  builderState[matchId][marketKey].odds = parseFloat(btn.dataset.odds);
+  builderState[matchId][marketKey].label = btn.querySelector('.bb-opt-label').innerText;
+  bbRecalc(matchId);
+}
+
+function bbRecalc(matchId) {
+  const state = builderState[matchId] || {};
+  const lines = [];
+  let totalStake = 0, totalReturn = 0, anyInvalid = false, anyLeg = false;
+
+  Object.keys(state).forEach(key => {
+    const leg = state[key];
+    const amtEl = document.getElementById(`bb-amt-${matchId}-${key}`);
+    const amt = amtEl ? parseInt(amtEl.value) || 0 : 0;
+    leg.amount = amt;
+    if (leg.pick && amt > 0) {
+      anyLeg = true;
+      if (amt % 5 !== 0) anyInvalid = true;
+      const ret = Math.floor(amt * leg.odds);
+      totalStake += amt;
+      totalReturn += ret;
+      lines.push(`<div class="bb-rcpt-line"><span>${leg.label} @ ${leg.odds.toFixed(2)}x · ${amt.toLocaleString()} pts</span><span class="bb-rcpt-win">→ ${ret.toLocaleString()}</span></div>`);
+    } else if (leg.pick && amt === 0) {
+      anyInvalid = true; // ticked + picked but no amount yet
+    } else if (!leg.pick) {
+      anyInvalid = true; // ticked but no pick chosen
+    }
+  });
+
+  const receipt = document.getElementById(`bb-receipt-${matchId}`);
+  const linesEl = document.getElementById(`bb-receipt-lines-${matchId}`);
+  const totalEl = document.getElementById(`bb-receipt-total-${matchId}`);
+  const placeBtn = document.getElementById(`bb-place-${matchId}`);
+
+  if (anyLeg && linesEl) {
+    receipt.classList.remove('hidden');
+    linesEl.innerHTML = lines.join('');
+    totalEl.innerHTML = `<span>Total staked: <strong>${totalStake.toLocaleString()}</strong> pts</span><span>If all win: <strong class="bb-rcpt-win">${totalReturn.toLocaleString()}</strong> pts</span>`;
+  } else if (receipt) {
+    receipt.classList.add('hidden');
   }
-  html += `</div>`;
-  return html;
+
+  // Enable place button only when there's at least one fully-valid leg and nothing half-filled
+  if (placeBtn) placeBtn.disabled = !(anyLeg && !anyInvalid);
+}
+
+async function bbPlace(matchId) {
+  const state = builderState[matchId] || {};
+  const legs = Object.keys(state)
+    .map(key => ({ betType: key, ...state[key] }))
+    .filter(l => l.pick && l.amount > 0);
+
+  if (legs.length === 0) { alert('Tick at least one bet and enter an amount.'); return; }
+  for (const l of legs) {
+    if (l.amount % 5 !== 0) { alert('All amounts must be multiples of 5.'); return; }
+  }
+
+  const totalStake = legs.reduce((s, l) => s + l.amount, 0);
+  const totalReturn = legs.reduce((s, l) => s + Math.floor(l.amount * l.odds), 0);
+  const summary = legs.map(l => `• ${l.label} @ ${l.odds.toFixed(2)}x — ${l.amount.toLocaleString()} pts`).join('\n');
+  if (!confirm(`⚠️ Confirm ${legs.length} bet${legs.length > 1 ? 's' : ''}\n\n${summary}\n\nTotal staked: ${totalStake.toLocaleString()} pts\nIf all win: ${totalReturn.toLocaleString()} pts\n\nEach bet settles independently. Place them?`)) return;
+
+  const token = localStorage.getItem('token');
+  showLoadingOverlay(`Placing ${legs.length} bet${legs.length > 1 ? 's' : ''}...`);
+
+  // Fire each leg sequentially. Track results so partial failures are reported clearly.
+  const placed = [], failed = [];
+  for (const l of legs) {
+    try {
+      const res = await fetch(`${API}/predict`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': token },
+        body: JSON.stringify({ matchId, selectedTeam: l.pick, pointsUsed: l.amount, betType: l.betType })
+      });
+      const data = await res.json();
+      if (res.ok) placed.push(l); else failed.push({ l, msg: data.message });
+    } catch (e) {
+      failed.push({ l, msg: 'Network error' });
+    }
+  }
+
+  hideLoadingOverlay();
+  delete builderState[matchId];
+
+  if (placed.length > 0) playSound('predictSound');
+  if (failed.length === 0) {
+    showNotification(`${placed.length} bet${placed.length > 1 ? 's' : ''} placed on this match!`);
+  } else if (placed.length > 0) {
+    showNotification(`${placed.length} placed, ${failed.length} failed: ${failed[0].msg}`);
+  } else {
+    alert('Bets failed: ' + failed[0].msg);
+  }
+
+  // Refresh authoritative state from the server (covers the multi-bet case cleanly).
+  if (lastKnownPoints !== null && placed.length > 0) {
+    const staked = placed.reduce((s, l) => s + l.amount, 0);
+    lastKnownPoints = Math.max(0, lastKnownPoints - staked);
+    setPointsDisplay(lastKnownPoints);
+  }
+  suppressNextPointsNotification = true;
+  setTimeout(() => { refreshUserData(); loadMatches(true); loadLeaderboard(); }, 1000);
+}
+
+// Renders the "you already have bets on this match" receipt + rebuild button.
+function renderPlacedBets(match, userBets) {
+  const line = match.total_line ? +match.total_line : 2.5;
+  const labelFor = (b) => {
+    const t = (b.bet_type || 'moneyline').toLowerCase();
+    if (t === 'total') return `Total Goals: ${b.selected_team === 'OVER' ? 'Over' : 'Under'} ${line}`;
+    if (t === 'btts') return `Both Teams To Score: ${b.selected_team === 'YES' ? 'Yes' : 'No'}`;
+    return `${isKnockout(match.stage) && b.selected_team !== 'DRAW' ? b.selected_team + ' to advance' : b.selected_team}`;
+  };
+  let totalStake = 0, totalReturn = 0;
+  const rows = userBets.map(b => {
+    const odds = b.odds_used ? parseFloat(b.odds_used) : null;
+    const ret = odds ? Math.floor(b.points_used * odds) : b.points_used;
+    totalStake += b.points_used; totalReturn += ret;
+    return `<div class="placed-leg">
+      <span class="placed-leg-pick">${labelFor(b)}</span>
+      <span class="placed-leg-num">${b.points_used.toLocaleString()} @ ${odds ? odds.toFixed(2) + 'x' : '—'}</span>
+      <span class="placed-leg-win">→ ${ret.toLocaleString()}</span>
+    </div>`;
+  }).join('');
+
+  return `
+  <div class="placed-bets">
+    <div class="placed-title">✅ Your bets on this match (${userBets.length})</div>
+    ${rows}
+    <div class="placed-total"><span>Staked: <strong>${totalStake.toLocaleString()}</strong></span><span>If all win: <strong class="bb-rcpt-win">${totalReturn.toLocaleString()}</strong></span></div>
+    <p class="placed-note">To change anything, cancel all bets on this match and rebuild. Your stake is fully refunded — but you'll rebuild at the current odds, so locking in early pays off.</p>
+    <button class="cancel-btn" onclick="cancelBet(${match.id})">✕ Cancel all &amp; rebuild</button>
+  </div>`;
 }
 
 let lastKnownPoints = null;
@@ -584,9 +781,11 @@ function renderMatchCards(data) {
         const matchTime = new Date(match.match_time);
         const closeTime = new Date(matchTime.getTime() - 5 * 60 * 1000);
 
-        const userPrediction = predictedMatches.find(
+        // ALL of this user's bets on this match (moneyline + any sidebets)
+        const userBets = predictedMatches.filter(
           prediction => prediction.match_id === match.id
         );
+        const hasBets = userBets.length > 0;
 
         const timeText = matchTime.toLocaleTimeString("en-GB", {
           hour: "2-digit",
@@ -595,8 +794,7 @@ function renderMatchCards(data) {
           timeZone: "Asia/Dubai"
         });
 
-        // A match is only bettable once REAL odds exist.
-        // Knockouts are two-way (to advance) so they have no draw odds.
+        // A match is bettable once REAL odds exist for at least the match result.
         const isKO = isKnockout(match.stage);
         const oddsReady = isKO
           ? (match.odds_a && match.odds_b && parseFloat(match.odds_a) > 0 && parseFloat(match.odds_b) > 0)
@@ -607,17 +805,18 @@ function renderMatchCards(data) {
 
 if (match.result) {
 
+  // Settled — show the user's bets and the result.
   let predictionText = "";
-
-  if (userPrediction) {
-    predictionText = `
-      Your prediction: ${userPrediction.selected_team}
-      <br>
-      Points used: ${userPrediction.points_used}
-      <br>
-    `;
+  if (hasBets) {
+    const line = match.total_line ? +match.total_line : 2.5;
+    const lab = (b) => {
+      const t = (b.bet_type || 'moneyline').toLowerCase();
+      if (t === 'total') return `Total ${b.selected_team === 'OVER' ? 'Over' : 'Under'} ${line}`;
+      if (t === 'btts') return `BTTS ${b.selected_team === 'YES' ? 'Yes' : 'No'}`;
+      return b.selected_team;
+    };
+    predictionText = `Your bets: ${userBets.map(lab).join(', ')}<br>`;
   }
-
   actionHtml = `
     <p class="locked-text">
       ${predictionText}
@@ -627,69 +826,32 @@ if (match.result) {
     </p>
   `;
 
-} else if (userPrediction && now >= openTime && now <= closeTime) {
+} else if (hasBets && now >= openTime && now <= closeTime) {
 
-  // Free editing until window closes — no cooldown
-  // Check if odds have drifted from the locked-in odds
-  const lockedOdds = userPrediction.odds_used ? parseFloat(userPrediction.odds_used) : null;
-  let currentOdds = null;
-  if (userPrediction.selected_team === match.team_a) currentOdds = match.odds_a ? parseFloat(match.odds_a) : null;
-  else if (userPrediction.selected_team === match.team_b) currentOdds = match.odds_b ? parseFloat(match.odds_b) : null;
-  else if (userPrediction.selected_team === 'DRAW') currentOdds = match.odds_draw ? parseFloat(match.odds_draw) : null;
-
-  const oddsChanged = lockedOdds && currentOdds && Math.abs(lockedOdds - currentOdds) >= 0.01;
-  const lockedPayout = lockedOdds ? Math.floor(userPrediction.points_used * lockedOdds) : 0;
-
+  // Has bets and window still open → show placed-bets receipt + cancel/rebuild.
   actionHtml = `
   <div class="countdown-box">
     <span>Predictions close in:</span>
     <strong id="timer-${match.id}">${getCountdown(closeTime)}</strong>
   </div>
-
   <div class="prediction-box">
-    <div class="bet-status-bar">
-      <p>✅ Current bet: <strong>${userPrediction.selected_team}</strong> · <strong>${userPrediction.points_used.toLocaleString()} pts</strong>${lockedOdds ? ` @ <strong>${lockedOdds.toFixed(2)}x</strong>` : ''}</p>
-      ${lockedOdds ? `<p style="font-size:0.82rem;color:#22c55e;">Locked payout if correct: ${lockedPayout.toLocaleString()} pts</p>` : ''}
-      ${oddsChanged
-        ? `<div class="odds-change-notice">
-             <p>⚠ Odds changed: <strong>${lockedOdds.toFixed(2)}x → ${currentOdds.toFixed(2)}x</strong></p>
-             <p style="font-size:0.78rem;opacity:0.8;">Adjusting moves your whole stake to the new odds.</p>
-             <button class="adjust-odds-btn" onclick="adjustOdds(${match.id}, '${userPrediction.selected_team}', ${currentOdds}, ${userPrediction.points_used})">↻ Move to ${currentOdds.toFixed(2)}x</button>
-           </div>`
-        : ''
-      }
-      <button class="cancel-btn" onclick="cancelBet(${match.id})">✕ Cancel Bet</button>
-    </div>
-
-    <p style="font-size:0.82rem;color:#aaa;margin:8px 0 4px;">Change pick or amount anytime before close:</p>
-    <div class="bet-options">
-      <button class="bet-btn ${userPrediction.selected_team === match.team_a ? 'bet-btn-active' : ''}" onclick="selectBet(${match.id}, '${match.team_a}', ${match.odds_a || 2})">
-        <span class="bet-team">${match.team_a}${isKO ? ' <span class="adv-tag">to advance</span>' : ''}</span>
-        <span class="bet-odds">${match.odds_a ? parseFloat(match.odds_a).toFixed(2) + 'x' : '2.00x'}</span>
-      </button>
-      ${isKO ? '' : `<button class="bet-btn draw-btn ${userPrediction.selected_team === 'DRAW' ? 'bet-btn-active' : ''}" onclick="selectBet(${match.id}, 'DRAW', ${match.odds_draw || 1.5})">
-        <span class="bet-team">Draw</span>
-        <span class="bet-odds">${match.odds_draw ? parseFloat(match.odds_draw).toFixed(2) + 'x' : '1.50x'}</span>
-      </button>`}
-      <button class="bet-btn ${userPrediction.selected_team === match.team_b ? 'bet-btn-active' : ''}" onclick="selectBet(${match.id}, '${match.team_b}', ${match.odds_b || 2})">
-        <span class="bet-team">${match.team_b}${isKO ? ' <span class="adv-tag">to advance</span>' : ''}</span>
-        <span class="bet-odds">${match.odds_b ? parseFloat(match.odds_b).toFixed(2) + 'x' : '2.00x'}</span>
-      </button>
-    </div>
-    <div id="bet-slip-${match.id}" class="bet-slip hidden">
-      <p class="bet-slip-preview" id="bet-preview-${match.id}"></p>
-      <input type="number" id="points-${match.id}" placeholder="Points to bet (multiples of 5)" min="5" step="5"
-        oninput="updateBetPreview(${match.id})" value="${userPrediction.points_used}">
-      <button class="confirm-btn" onclick="confirmBet(${match.id}, true)">Update Bet</button>
-    </div>
+    ${renderPlacedBets(match, userBets)}
   </div>
   `;
 
-} else if (userPrediction) {
+} else if (hasBets) {
 
+  // Has bets but window closed → locked, waiting for result.
+  const line = match.total_line ? +match.total_line : 2.5;
+  const lab = (b) => {
+    const t = (b.bet_type || 'moneyline').toLowerCase();
+    if (t === 'total') return `Total ${b.selected_team === 'OVER' ? 'Over' : 'Under'} ${line}`;
+    if (t === 'btts') return `BTTS ${b.selected_team === 'YES' ? 'Yes' : 'No'}`;
+    return b.selected_team;
+  };
   actionHtml = `
     <p class="locked-text">
-      ✅ Bet placed: <strong>${userPrediction.selected_team}</strong> · ${userPrediction.points_used.toLocaleString()} pts
+      ✅ ${userBets.length} bet${userBets.length > 1 ? 's' : ''} placed: <strong>${userBets.map(lab).join(', ')}</strong>
       <br><span style="font-size:0.8rem;opacity:0.7;">Waiting for result.</span>
     </p>
   `;
@@ -710,44 +872,14 @@ if (match.result) {
 
 } else if (now >= openTime && now <= closeTime) {
 
+  // Open, odds ready, no bets yet → the BET BUILDER.
   actionHtml = `
-
   <div class="countdown-box">
-
-    <span>
-      Predictions close in:
-    </span>
-
-    <strong id="timer-${match.id}">
-      ${getCountdown(closeTime)}
-    </strong>
-
+    <span>Predictions close in:</span>
+    <strong id="timer-${match.id}">${getCountdown(closeTime)}</strong>
   </div>
-
   <div class="prediction-box">
-
-    <div class="bet-options">
-      <button class="bet-btn" onclick="selectBet(${match.id}, '${match.team_a}', ${match.odds_a})">
-        <span class="bet-team">${match.team_a}${isKO ? ' <span class="adv-tag">to advance</span>' : ''}</span>
-        <span class="bet-odds">${parseFloat(match.odds_a).toFixed(2)}x</span>
-      </button>
-      ${isKO ? '' : `<button class="bet-btn draw-btn" onclick="selectBet(${match.id}, 'DRAW', ${match.odds_draw})">
-        <span class="bet-team">Draw</span>
-        <span class="bet-odds">${parseFloat(match.odds_draw).toFixed(2)}x</span>
-      </button>`}
-      <button class="bet-btn" onclick="selectBet(${match.id}, '${match.team_b}', ${match.odds_b})">
-        <span class="bet-team">${match.team_b}${isKO ? ' <span class="adv-tag">to advance</span>' : ''}</span>
-        <span class="bet-odds">${parseFloat(match.odds_b).toFixed(2)}x</span>
-      </button>
-    </div>
-    <div id="bet-slip-${match.id}" class="bet-slip hidden">
-      <p class="bet-slip-preview" id="bet-preview-${match.id}"></p>
-      <input type="number" id="points-${match.id}" placeholder="Points to bet (multiples of 5)" min="5" step="5"
-        oninput="updateBetPreview(${match.id})">
-      <button class="confirm-btn" onclick="confirmBet(${match.id})">Confirm Bet</button>
-    </div>
-    ${renderSidebets(match)}
-
+    ${renderBetBuilder(match)}
   </div>
 `;
 
@@ -1432,9 +1564,12 @@ async function adjustOdds(matchId, pick, newOdds, stake) {
 
 async function cancelBet(matchId) {
   const token = localStorage.getItem("token");
-  if (!confirm("Cancel your bet and get your points back?")) return;
+  // Count this user's bets on the match so the prompt is honest about "all".
+  const myLegs = predictedMatches.filter(p => p.match_id === matchId);
+  const legWord = myLegs.length > 1 ? `all ${myLegs.length} bets` : "your bet";
+  if (!confirm(`Cancel ${legWord} on this match and get your points back?\n\nYou can then rebuild — but at the current odds.`)) return;
 
-  showLoadingOverlay("Cancelling bet...");
+  showLoadingOverlay("Cancelling bets...");
 
   const res = await fetch(`${API}/cancel-predict`, {
     method: "POST",
@@ -1445,23 +1580,26 @@ async function cancelBet(matchId) {
   const data = await res.json();
   hideLoadingOverlay();
   if (res.ok) {
-    // Optimistic: refund stake to display and remove prediction from memory
-    const idx = predictedMatches.findIndex(p => p.match_id === matchId);
-    if (idx >= 0) {
-      const refund = predictedMatches[idx].points_used;
-      if (lastKnownPoints !== null) {
-        lastKnownPoints = lastKnownPoints + refund;
-        setPointsDisplay(lastKnownPoints);
-      }
-      predictedMatches.splice(idx, 1);
+    // Optimistic: refund the FULL total of all legs on this match, and drop them
+    // all from memory. Prefer the server's authoritative refunded amount.
+    const localTotal = myLegs.reduce((s, p) => s + p.points_used, 0);
+    const refund = (typeof data.refunded === "number") ? data.refunded : localTotal;
+    if (lastKnownPoints !== null && refund > 0) {
+      lastKnownPoints = lastKnownPoints + refund;
+      setPointsDisplay(lastKnownPoints);
     }
-    showNotification("Bet cancelled — points refunded!");
+    // Remove every leg for this match from the in-memory list.
+    for (let i = predictedMatches.length - 1; i >= 0; i--) {
+      if (predictedMatches[i].match_id === matchId) predictedMatches.splice(i, 1);
+    }
+    const n = (typeof data.count === "number") ? data.count : myLegs.length;
+    showNotification(`Cancelled ${n} bet${n > 1 ? "s" : ""} — ${refund.toLocaleString()} pts refunded!`);
     renderMatchCards(cachedMatches);
     loadLeaderboard();
     suppressNextPointsNotification = true;
     setTimeout(refreshUserData, 1500);
   } else {
-    alert(data.message || "Could not cancel bet.");
+    alert(data.message || "Could not cancel bets.");
   }
 }
 
@@ -1488,61 +1626,74 @@ async function loadActiveBets() {
       return;
     }
 
-    // Group by match
-    const grouped = {};
+    // Human label for a bet leg, e.g. "Brazil to advance", "Total Over 2.5", "BTTS Yes".
+    const legLabel = (b, isKO, line) => {
+      const t = (b.bet_type || "moneyline").toLowerCase();
+      if (t === "total") return `Total Goals: ${b.selected_team === "OVER" ? "Over" : "Under"} ${line}`;
+      if (t === "btts") return `Both Teams To Score: ${b.selected_team === "YES" ? "Yes" : "No"}`;
+      if (b.selected_team === "DRAW") return "Draw";
+      return isKO ? `${b.selected_team} to advance` : b.selected_team;
+    };
+    // moneyline first, then total, then btts
+    const typeOrder = t => ({ moneyline: 0, total: 1, btts: 2 }[(t || "moneyline").toLowerCase()] ?? 9);
+
+    // Two-level group: match → player → that player's legs.
+    const matches = {};
     data.forEach(b => {
-      const key = b.team_a + " vs " + b.team_b;
-      if (!grouped[key]) grouped[key] = {
-        team_a: b.team_a,
-        team_b: b.team_b,
-        match_time: b.match_time,
-        stage: b.stage,
-        group_name: b.group_name,
-        bets: []
+      const mKey = b.match_id;
+      if (!matches[mKey]) matches[mKey] = {
+        team_a: b.team_a, team_b: b.team_b, match_time: b.match_time,
+        stage: b.stage, group_name: b.group_name, total_line: b.total_line,
+        players: {}
       };
-      grouped[key].bets.push(b);
+      const p = matches[mKey].players;
+      if (!p[b.username]) p[b.username] = [];
+      p[b.username].push(b);
     });
 
-    box.innerHTML = Object.values(grouped).map(g => {
+    box.innerHTML = Object.values(matches).map(g => {
+      const isKO = isKnockout(g.stage);
+      const line = g.total_line ? +g.total_line : 2.5;
       const matchDate = new Date(g.match_time).toLocaleDateString("en-GB", {
         day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit",
         timeZone: "Asia/Dubai", hour12: false
       });
-      const totalStake = g.bets.reduce((s, b) => s + b.points_used, 0);
 
-      const rows = g.bets.map(b => {
-        const odds = b.odds_used ? parseFloat(b.odds_used).toFixed(2) + "x" : "—";
-        const payout = b.odds_used ? Math.floor(b.points_used * b.odds_used) : 0;
-        const profit = payout - b.points_used;
-        const payoutCell = b.odds_used
-          ? `${payout.toLocaleString()}<br><span class="abet-profit">+${profit.toLocaleString()} profit</span>`
-          : "—";
-        return `<tr class="abet-row">
-          <td class="abet-player"><strong>${b.username}</strong></td>
-          <td class="abet-pick">${b.selected_team}</td>
-          <td class="abet-num">${b.points_used.toLocaleString()}</td>
-          <td class="abet-num">${odds}</td>
-          <td class="abet-towin">${payoutCell}</td>
-        </tr>`;
+      // Build each player's block: their main bet, then sidebets indented under it.
+      const playerBlocks = Object.keys(g.players).map(username => {
+        const legs = g.players[username].slice().sort((a, b) => typeOrder(a.bet_type) - typeOrder(b.bet_type));
+        const playerStake = legs.reduce((s, b) => s + b.points_used, 0);
+
+        const legRows = legs.map(b => {
+          const t = (b.bet_type || "moneyline").toLowerCase();
+          const isSide = t !== "moneyline";
+          const odds = b.odds_used ? parseFloat(b.odds_used).toFixed(2) + "x" : "—";
+          const payout = b.odds_used ? Math.floor(b.points_used * b.odds_used) : 0;
+          const profit = payout - b.points_used;
+          return `<div class="abet-leg ${isSide ? "abet-leg-side" : "abet-leg-main"}">
+            <span class="abet-leg-pick">${isSide ? "↳ " : ""}${legLabel(b, isKO, line)}</span>
+            <span class="abet-leg-stake">${b.points_used.toLocaleString()} @ ${odds}</span>
+            <span class="abet-leg-win">→ ${b.odds_used ? payout.toLocaleString() : "—"}${b.odds_used ? `<span class="abet-profit"> (+${profit.toLocaleString()})</span>` : ""}</span>
+          </div>`;
+        }).join("");
+
+        return `<div class="abet-player-block">
+          <div class="abet-player-head"><strong>${username}</strong>
+            <span class="abet-player-meta">${legs.length} bet${legs.length > 1 ? "s" : ""} · ${playerStake.toLocaleString()} pts</span>
+          </div>
+          ${legRows}
+        </div>`;
       }).join("");
+
+      const totalStake = Object.values(g.players).flat().reduce((s, b) => s + b.points_used, 0);
+      const betCount = Object.values(g.players).flat().length;
 
       return `
         <div class="match-item">
           <h4>${g.team_a} vs ${g.team_b}</h4>
           <p>${g.stage}${g.group_name ? " · " + g.group_name : ""} · ${matchDate} UAE</p>
-          <p style="color:#ffd600;font-size:0.85rem;">Total staked: ${totalStake.toLocaleString()} pts · ${g.bets.length} bets</p>
-          <table class="active-bets-table">
-            <thead>
-              <tr>
-                <th class="abet-player">Player</th>
-                <th class="abet-pick">Pick</th>
-                <th class="abet-num">Stake</th>
-                <th class="abet-num">Odds</th>
-                <th class="abet-towin">Payout</th>
-              </tr>
-            </thead>
-            <tbody>${rows}</tbody>
-          </table>
+          <p style="color:#ffd600;font-size:0.85rem;">Total staked: ${totalStake.toLocaleString()} pts · ${betCount} bet${betCount > 1 ? "s" : ""}</p>
+          <div class="abet-players">${playerBlocks}</div>
         </div>
       `;
     }).join("");
