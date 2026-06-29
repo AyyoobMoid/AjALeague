@@ -26,6 +26,58 @@ function isKnockout(stage) {
          s.includes("3rd place") || s.includes("knockout");
 }
 
+// Renders the optional sidebet markets (Over/Under 2.5 goals, Both Teams To
+// Score) beneath a match's moneyline. Each market is an INDEPENDENT bet — a
+// player can place moneyline + over/under + BTTS on the same match (no parlay).
+// A market only appears once its odds have been fetched from the API.
+function renderSidebets(match) {
+  const hasOU = match.odds_over && match.odds_under
+    && parseFloat(match.odds_over) > 0 && parseFloat(match.odds_under) > 0;
+  const hasBTTS = match.odds_btts_yes && match.odds_btts_no
+    && parseFloat(match.odds_btts_yes) > 0 && parseFloat(match.odds_btts_no) > 0;
+  if (!hasOU && !hasBTTS) return "";
+
+  const line = match.total_line ? parseFloat(match.total_line) : 2.5;
+
+  const market = (key, title, subtitle, optA, optB) => {
+    const k = match.id + ":" + key;
+    return `
+    <div class="sidebet-market">
+      <div class="sidebet-head">${title} <span class="sidebet-sub">${subtitle}</span></div>
+      <div class="bet-options sidebet-options">
+        <button class="bet-btn" onclick="selectBet(${match.id}, '${optA.val}', ${optA.odds}, '${key}')">
+          <span class="bet-team">${optA.label}</span>
+          <span class="bet-odds">${parseFloat(optA.odds).toFixed(2)}x</span>
+        </button>
+        <button class="bet-btn" onclick="selectBet(${match.id}, '${optB.val}', ${optB.odds}, '${key}')">
+          <span class="bet-team">${optB.label}</span>
+          <span class="bet-odds">${parseFloat(optB.odds).toFixed(2)}x</span>
+        </button>
+      </div>
+      <div id="bet-slip-${k}" class="bet-slip hidden">
+        <p class="bet-slip-preview" id="bet-preview-${k}"></p>
+        <input type="number" id="points-${k}" placeholder="Points to bet (multiples of 5)" min="5" step="5"
+          oninput="updateBetPreview(${match.id}, '${key}')">
+        <button class="confirm-btn" onclick="confirmBet(${match.id}, false, '${key}')">Confirm Bet</button>
+      </div>
+    </div>`;
+  };
+
+  let html = `<div class="sidebets"><div class="sidebets-title">⚡ Side bets <span class="sidebets-note">— extra bets on this match, each settled on its own</span></div>`;
+  if (hasOU) {
+    html += market("total", `Total Goals`, `Over/Under ${line}`,
+      { label: `Over ${line}`, val: "OVER", odds: match.odds_over },
+      { label: `Under ${line}`, val: "UNDER", odds: match.odds_under });
+  }
+  if (hasBTTS) {
+    html += market("btts", `Both Teams To Score`, `Yes/No`,
+      { label: "Yes", val: "YES", odds: match.odds_btts_yes },
+      { label: "No", val: "NO", odds: match.odds_btts_no });
+  }
+  html += `</div>`;
+  return html;
+}
+
 let lastKnownPoints = null;
 let lastKnownRank = null;
 let predictedMatches = []; // module-level so confirmBet can update it immediately
@@ -694,6 +746,7 @@ if (match.result) {
         oninput="updateBetPreview(${match.id})">
       <button class="confirm-btn" onclick="confirmBet(${match.id})">Confirm Bet</button>
     </div>
+    ${renderSidebets(match)}
 
   </div>
 `;
@@ -1219,31 +1272,41 @@ document.addEventListener("click", function(e) {
 
 const activeBet = {}; // { matchId: { pick, odds } }
 
-function selectBet(matchId, pick, odds) {
-  activeBet[matchId] = { pick, odds };
+// activeBet is keyed by a slip key = matchId for moneyline, or matchId + ":" + betType
+// for sidebets, so a user can have all three markets staged independently on one match.
+function slipKey(matchId, betType) {
+  return betType && betType !== "moneyline" ? matchId + ":" + betType : String(matchId);
+}
 
-  const slip = document.getElementById("bet-slip-" + matchId);
-  slip.classList.remove("hidden");
+function selectBet(matchId, pick, odds, betType) {
+  betType = betType || "moneyline";
+  const key = slipKey(matchId, betType);
+  activeBet[key] = { pick, odds, betType, matchId };
 
-  // Don't clear points if already filled (switching teams on existing bet preserves stake)
-  const pointsInput = document.getElementById("points-" + matchId);
-  const preview = document.getElementById("bet-preview-" + matchId);
-  if (pointsInput.value && parseInt(pointsInput.value) > 0) {
-    updateBetPreview(matchId);
-  } else {
+  const slip = document.getElementById("bet-slip-" + key);
+  if (slip) slip.classList.remove("hidden");
+
+  const pointsInput = document.getElementById("points-" + key);
+  const preview = document.getElementById("bet-preview-" + key);
+  if (pointsInput && pointsInput.value && parseInt(pointsInput.value) > 0) {
+    updateBetPreview(matchId, betType);
+  } else if (preview) {
     preview.innerText = "Pick: " + pick + " @ " + odds + "x — enter points to see payout";
   }
 }
 
-function updateBetPreview(matchId) {
-  const bet = activeBet[matchId];
+function updateBetPreview(matchId, betType) {
+  betType = betType || "moneyline";
+  const key = slipKey(matchId, betType);
+  const bet = activeBet[key];
   if (!bet) return;
 
-  const pts = parseInt(document.getElementById("points-" + matchId).value) || 0;
+  const pts = parseInt(document.getElementById("points-" + key).value) || 0;
   const payout = Math.floor(pts * bet.odds);
   const profit = payout - pts;
 
-  const preview = document.getElementById("bet-preview-" + matchId);
+  const preview = document.getElementById("bet-preview-" + key);
+  if (!preview) return;
   if (pts <= 0) {
     preview.innerText = "Pick: " + bet.pick + " @ " + bet.odds + "x";
   } else {
@@ -1251,12 +1314,13 @@ function updateBetPreview(matchId) {
   }
 }
 
-async function confirmBet(matchId, isUpdate = false) {
+async function confirmBet(matchId, isUpdate = false, betType = "moneyline") {
   const token = localStorage.getItem("token");
-  const bet = activeBet[matchId];
-  if (!bet) { alert("Select a team first."); return; }
+  const key = slipKey(matchId, betType);
+  const bet = activeBet[key];
+  if (!bet) { alert("Make a selection first."); return; }
 
-  const pts = parseInt(document.getElementById("points-" + matchId).value);
+  const pts = parseInt(document.getElementById("points-" + key).value);
   if (!pts || pts <= 0) { alert("Enter points to bet."); return; }
   if (pts % 5 !== 0) { alert("Points must be a multiple of 5."); return; }
 
@@ -1279,7 +1343,7 @@ async function confirmBet(matchId, isUpdate = false) {
   const res = await fetch(endpoint, {
     method: "POST",
     headers: { "Content-Type": "application/json", "Authorization": token },
-    body: JSON.stringify({ matchId, selectedTeam: bet.pick, pointsUsed: pts, oddsUsed: bet.odds })
+    body: JSON.stringify({ matchId, selectedTeam: bet.pick, pointsUsed: pts, oddsUsed: bet.odds, betType: bet.betType })
   });
 
   const data = await res.json();
@@ -1290,38 +1354,50 @@ async function confirmBet(matchId, isUpdate = false) {
     showNotification(betMsg + " " + bet.pick + " @ " + bet.odds + "x for " + pts.toLocaleString() + " pts");
 
     // Clear bet slip state immediately
-    const slip = document.getElementById("bet-slip-" + matchId);
+    const slip = document.getElementById("bet-slip-" + key);
     if (slip) slip.classList.add("hidden");
-    const input = document.getElementById("points-" + matchId);
+    const input = document.getElementById("points-" + key);
     if (input) input.value = "";
-    delete activeBet[matchId];
+    delete activeBet[key];
 
-    // ── OPTIMISTIC UI UPDATE ───────────────────────────────────────────────
-    // We know the outcome — update everything immediately without waiting for fetches.
+    // ── OPTIMISTIC UI UPDATE (moneyline only) ──────────────────────────────
+    // predictedMatches is keyed by match_id, which only models one bet per match
+    // (the moneyline). For sidebets we instead just deduct points and refresh
+    // from the server, so the multiple-bets-per-match state stays correct.
+    if (bet.betType === "moneyline") {
+      // 1. Capture old stake BEFORE overwriting predictedMatches
+      const existingIdx = predictedMatches.findIndex(p => p.match_id === matchId);
+      const oldStake = (isUpdate && existingIdx >= 0) ? predictedMatches[existingIdx].points_used : 0;
 
-    // 1. Capture old stake BEFORE overwriting predictedMatches
-    const existingIdx = predictedMatches.findIndex(p => p.match_id === matchId);
-    const oldStake = (isUpdate && existingIdx >= 0) ? predictedMatches[existingIdx].points_used : 0;
+      // 2. Update points display immediately using the captured old stake
+      if (lastKnownPoints !== null) {
+        const newPoints = lastKnownPoints + oldStake - pts;
+        lastKnownPoints = Math.max(0, newPoints);
+        setPointsDisplay(lastKnownPoints);
+      }
 
-    // 2. Update points display immediately using the captured old stake
-    if (lastKnownPoints !== null) {
-      const newPoints = lastKnownPoints + oldStake - pts;
-      lastKnownPoints = Math.max(0, newPoints);
-      setPointsDisplay(lastKnownPoints);
+      // 3. Now update predictedMatches in memory so re-render shows the new bet
+      const newPrediction = { match_id: matchId, selected_team: bet.pick, points_used: pts, odds_used: bet.odds, created_at: new Date().toISOString() };
+      if (existingIdx >= 0) predictedMatches[existingIdx] = newPrediction;
+      else predictedMatches.push(newPrediction);
+
+      // 4. Re-render match cards from cached data + updated predictedMatches (no fetch)
+      renderMatchCards(cachedMatches);
+
+      // 5. Sync leaderboard immediately, delay points sync so DB write can commit first
+      loadLeaderboard();
+      suppressNextPointsNotification = true;
+      setTimeout(refreshUserData, 1500);
+    } else {
+      // Sidebet: deduct stake from display, then refresh authoritative state.
+      if (lastKnownPoints !== null) {
+        lastKnownPoints = Math.max(0, lastKnownPoints - pts);
+        setPointsDisplay(lastKnownPoints);
+      }
+      loadLeaderboard();
+      suppressNextPointsNotification = true;
+      setTimeout(() => { refreshUserData(); loadMatches(); }, 1200);
     }
-
-    // 3. Now update predictedMatches in memory so re-render shows the new bet
-    const newPrediction = { match_id: matchId, selected_team: bet.pick, points_used: pts, odds_used: bet.odds, created_at: new Date().toISOString() };
-    if (existingIdx >= 0) predictedMatches[existingIdx] = newPrediction;
-    else predictedMatches.push(newPrediction);
-
-    // 4. Re-render match cards from cached data + updated predictedMatches (no fetch)
-    renderMatchCards(cachedMatches);
-
-    // 5. Sync leaderboard immediately, delay points sync so DB write can commit first
-    loadLeaderboard();
-    suppressNextPointsNotification = true;
-    setTimeout(refreshUserData, 1500);
 
   } else {
     alert(data.message || "Bet failed.");

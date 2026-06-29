@@ -1713,6 +1713,42 @@ button:hover::after {
   vertical-align: middle;
 }
 
+/* ── Side bets (Over/Under, BTTS) ── */
+.sidebets {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px dashed rgba(255, 214, 0, 0.25);
+}
+.sidebets-title {
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: #ffd000;
+  margin-bottom: 10px;
+}
+.sidebets-note {
+  font-weight: 400;
+  color: #888;
+  font-size: 0.72rem;
+}
+.sidebet-market {
+  margin-bottom: 12px;
+}
+.sidebet-head {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: #ddd;
+  margin-bottom: 5px;
+}
+.sidebet-sub {
+  color: #888;
+  font-weight: 400;
+  font-size: 0.72rem;
+  margin-left: 4px;
+}
+.sidebet-options {
+  margin-bottom: 0;
+}
+
 .bet-slip {
   background: rgba(255, 214, 0, 0.06);
   border: 1px solid rgba(255, 214, 0, 0.2);
