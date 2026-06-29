@@ -2349,16 +2349,97 @@ button:hover::after {
 }
 .bb-opt-label { font-size: 0.84rem; font-weight: 600; text-align: center; }
 .bb-opt-odds { font-size: 0.82rem; color: #ffd600; font-weight: 700; }
-.bb-amount {
+/* Stake control: slider on top, number box + Max below */
+.bb-stake { margin-top: 4px; }
+.bb-slider {
+  -webkit-appearance: none;
+  appearance: none;
   width: 100%;
+  height: 8px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.12);
+  outline: none;
+  margin: 6px 0 10px;
+  cursor: pointer;
+}
+/* WebKit thumb */
+.bb-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: #ffd600;
+  border: 2px solid #1a1a1a;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.5);
+  cursor: pointer;
+  transition: transform 0.1s ease;
+}
+.bb-slider::-webkit-slider-thumb:active { transform: scale(1.15); }
+/* Firefox thumb */
+.bb-slider::-moz-range-thumb {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: #ffd600;
+  border: 2px solid #1a1a1a;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.5);
+  cursor: pointer;
+}
+.bb-slider::-moz-range-track {
+  height: 8px;
+  border-radius: 6px;
+  background: transparent;
+}
+.bb-stake-readout {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.bb-amount {
+  flex: 1;
+  min-width: 0;
   padding: 9px 11px;
   border-radius: 8px;
   border: 1px solid rgba(255, 255, 255, 0.15);
   background: rgba(0, 0, 0, 0.3);
   color: #fff;
-  font-size: 0.9rem;
+  font-size: 0.95rem;
+  font-weight: 600;
+  text-align: center;
   box-sizing: border-box;
 }
+.bb-stake-pts {
+  font-size: 0.8rem;
+  color: #999;
+  flex-shrink: 0;
+}
+.bb-max-btn {
+  flex-shrink: 0;
+  padding: 8px 14px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 214, 0, 0.4);
+  background: rgba(255, 214, 0, 0.1);
+  color: #ffd600;
+  font-size: 0.8rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.bb-max-btn:hover {
+  background: rgba(255, 214, 0, 0.2);
+}
+.bb-receipt-warn {
+  margin-top: 8px;
+  padding: 7px 10px;
+  border-radius: 7px;
+  background: rgba(239, 68, 68, 0.12);
+  border: 1px solid rgba(239, 68, 68, 0.4);
+  color: #fca5a5;
+  font-size: 0.8rem;
+  line-height: 1.4;
+}
+.bb-receipt-warn.hidden { display: none; }
 .bb-receipt {
   margin: 12px 0;
   padding: 12px 14px;

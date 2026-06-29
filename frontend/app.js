@@ -79,6 +79,14 @@ function renderBetBuilder(match) {
   const markets = marketsFor(match);
   if (markets.length === 0) return '';
 
+  // Max a slider can reach = the user's current balance (rounded down to a
+  // multiple of 5). Fallback to a sane default if balance isn't known yet.
+  const bal = (typeof lastKnownPoints === 'number' && lastKnownPoints > 0)
+    ? Math.floor(lastKnownPoints / 5) * 5 : 0;
+  // Slider step scales with balance so big balances stay draggable, but never
+  // below 5 (the betting increment). Typing in the number box gives fine control.
+  const sliderStep = bal > 100000 ? 500 : bal > 20000 ? 100 : bal > 2000 ? 25 : 5;
+
   const marketHtml = markets.map(mkt => {
     const optButtons = mkt.options.map(o =>
       `<button type="button" class="bb-opt" data-odds="${o.odds}" data-val="${o.val.replace(/"/g, '&quot;')}"
@@ -96,21 +104,31 @@ function renderBetBuilder(match) {
       </label>
       <div class="bb-market-body hidden" id="bb-body-${match.id}-${mkt.key}">
         <div class="bb-opts">${optButtons}</div>
-        <input type="number" class="bb-amount" id="bb-amt-${match.id}-${mkt.key}"
-          placeholder="Points (multiples of 5)" min="5" step="5"
-          oninput="bbRecalc(${match.id})">
+        <div class="bb-stake">
+          <input type="range" class="bb-slider" id="bb-slider-${match.id}-${mkt.key}"
+            min="0" max="${bal}" step="${sliderStep}" value="0"
+            oninput="bbSlide(${match.id}, '${mkt.key}', this.value)">
+          <div class="bb-stake-readout">
+            <input type="number" class="bb-amount" id="bb-amt-${match.id}-${mkt.key}"
+              placeholder="0" min="0" max="${bal}" step="5" value=""
+              oninput="bbType(${match.id}, '${mkt.key}', this.value)">
+            <span class="bb-stake-pts">pts</span>
+            <button type="button" class="bb-max-btn" onclick="bbMax(${match.id}, '${mkt.key}')">Max</button>
+          </div>
+        </div>
       </div>
     </div>`;
   }).join('');
 
   return `
-  <div class="bet-builder" id="bet-builder-${match.id}">
-    <p class="bb-intro">Tick the bets you want, enter an amount for each, then place them all at once.</p>
+  <div class="bet-builder" id="bet-builder-${match.id}" data-balance="${bal}">
+    <p class="bb-intro">Tick the bets you want, set an amount for each, then place them all at once.</p>
     ${marketHtml}
     <div class="bb-receipt hidden" id="bb-receipt-${match.id}">
       <div class="bb-receipt-title">📋 Your slip</div>
       <div id="bb-receipt-lines-${match.id}"></div>
       <div class="bb-receipt-total" id="bb-receipt-total-${match.id}"></div>
+      <div class="bb-receipt-warn hidden" id="bb-receipt-warn-${match.id}"></div>
       <p class="bb-receipt-note">Each bet wins or loses on its own — this isn't a combo.</p>
     </div>
     <button class="confirm-btn bb-place-btn" id="bb-place-${match.id}" onclick="bbPlace(${match.id})" disabled>Place Bets</button>
@@ -126,8 +144,16 @@ function bbToggle(matchId, marketKey, checked) {
   if (!builderState[matchId]) builderState[matchId] = {};
   if (checked) {
     if (!builderState[matchId][marketKey]) builderState[matchId][marketKey] = { pick: null, odds: null, label: null, amount: 0 };
+    // Paint the slider's initial (empty) fill when the market is revealed.
+    const slider = document.getElementById(`bb-slider-${matchId}-${marketKey}`);
+    if (slider) bbPaintSlider(slider);
   } else {
     delete builderState[matchId][marketKey];
+    // Reset the controls so re-ticking starts clean.
+    const slider = document.getElementById(`bb-slider-${matchId}-${marketKey}`);
+    const num = document.getElementById(`bb-amt-${matchId}-${marketKey}`);
+    if (slider) { slider.value = 0; bbPaintSlider(slider); }
+    if (num) num.value = '';
   }
   bbRecalc(matchId);
 }
@@ -146,8 +172,55 @@ function bbPick(matchId, marketKey, btn) {
   bbRecalc(matchId);
 }
 
+// Snap any value to the nearest valid bet increment (multiple of 5), clamped to balance.
+function bbSnap(matchId, raw) {
+  const builder = document.getElementById(`bet-builder-${matchId}`);
+  const bal = builder ? parseInt(builder.dataset.balance) || 0 : 0;
+  let v = Math.round((parseInt(raw) || 0) / 5) * 5;
+  if (v < 0) v = 0;
+  if (v > bal) v = Math.floor(bal / 5) * 5;
+  return v;
+}
+
+// Write a value into BOTH the slider and the number box for a market, then recalc.
+function bbSetStake(matchId, marketKey, value) {
+  const v = bbSnap(matchId, value);
+  const slider = document.getElementById(`bb-slider-${matchId}-${marketKey}`);
+  const num = document.getElementById(`bb-amt-${matchId}-${marketKey}`);
+  if (slider) { slider.value = v; bbPaintSlider(slider); }
+  if (num) num.value = v === 0 ? '' : v;
+  bbRecalc(matchId);
+}
+
+// Slider dragged → sync number box.
+function bbSlide(matchId, marketKey, value) {
+  bbSetStake(matchId, marketKey, value);
+}
+// Number typed → sync slider. (Don't snap mid-type to allow free entry; snap on recalc.)
+function bbType(matchId, marketKey, value) {
+  const v = bbSnap(matchId, value);
+  const slider = document.getElementById(`bb-slider-${matchId}-${marketKey}`);
+  if (slider) { slider.value = v; bbPaintSlider(slider); }
+  bbRecalc(matchId);
+}
+// "Max" → set this market's stake to the full current balance.
+function bbMax(matchId, marketKey) {
+  const builder = document.getElementById(`bet-builder-${matchId}`);
+  const bal = builder ? parseInt(builder.dataset.balance) || 0 : 0;
+  bbSetStake(matchId, marketKey, bal);
+}
+// Paint the slider's filled portion (visual progress) via a CSS gradient.
+function bbPaintSlider(slider) {
+  const max = parseFloat(slider.max) || 1;
+  const pct = max > 0 ? (parseFloat(slider.value) / max) * 100 : 0;
+  slider.style.background =
+    `linear-gradient(to right, #ffd600 0%, #ffd600 ${pct}%, rgba(255,255,255,0.12) ${pct}%, rgba(255,255,255,0.12) 100%)`;
+}
+
 function bbRecalc(matchId) {
   const state = builderState[matchId] || {};
+  const builder = document.getElementById(`bet-builder-${matchId}`);
+  const balance = builder ? parseInt(builder.dataset.balance) || 0 : 0;
   const lines = [];
   let totalStake = 0, totalReturn = 0, anyInvalid = false, anyLeg = false;
 
@@ -170,21 +243,34 @@ function bbRecalc(matchId) {
     }
   });
 
+  // Combined stake across all ticked markets can't exceed the balance.
+  const overBalance = totalStake > balance;
+
   const receipt = document.getElementById(`bb-receipt-${matchId}`);
   const linesEl = document.getElementById(`bb-receipt-lines-${matchId}`);
   const totalEl = document.getElementById(`bb-receipt-total-${matchId}`);
+  const warnEl = document.getElementById(`bb-receipt-warn-${matchId}`);
   const placeBtn = document.getElementById(`bb-place-${matchId}`);
 
   if (anyLeg && linesEl) {
     receipt.classList.remove('hidden');
     linesEl.innerHTML = lines.join('');
     totalEl.innerHTML = `<span>Total staked: <strong>${totalStake.toLocaleString()}</strong> pts</span><span>If all win: <strong class="bb-rcpt-win">${totalReturn.toLocaleString()}</strong> pts</span>`;
+    if (warnEl) {
+      if (overBalance) {
+        warnEl.classList.remove('hidden');
+        warnEl.innerHTML = `⚠ Total staked (${totalStake.toLocaleString()}) is more than your balance (${balance.toLocaleString()}). Lower an amount to place these bets.`;
+      } else {
+        warnEl.classList.add('hidden');
+      }
+    }
   } else if (receipt) {
     receipt.classList.add('hidden');
   }
 
-  // Enable place button only when there's at least one fully-valid leg and nothing half-filled
-  if (placeBtn) placeBtn.disabled = !(anyLeg && !anyInvalid);
+  // Enable place button only when there's at least one fully-valid leg,
+  // nothing half-filled, and the combined stake fits the balance.
+  if (placeBtn) placeBtn.disabled = !(anyLeg && !anyInvalid && !overBalance);
 }
 
 async function bbPlace(matchId) {
@@ -200,6 +286,11 @@ async function bbPlace(matchId) {
 
   const totalStake = legs.reduce((s, l) => s + l.amount, 0);
   const totalReturn = legs.reduce((s, l) => s + Math.floor(l.amount * l.odds), 0);
+  // Final safety: never let the combined stake exceed the known balance.
+  if (typeof lastKnownPoints === 'number' && totalStake > lastKnownPoints) {
+    alert(`Total staked (${totalStake.toLocaleString()}) is more than your balance (${lastKnownPoints.toLocaleString()}). Lower an amount.`);
+    return;
+  }
   const summary = legs.map(l => `• ${l.label} @ ${l.odds.toFixed(2)}x — ${l.amount.toLocaleString()} pts`).join('\n');
   if (!confirm(`⚠️ Confirm ${legs.length} bet${legs.length > 1 ? 's' : ''}\n\n${summary}\n\nTotal staked: ${totalStake.toLocaleString()} pts\nIf all win: ${totalReturn.toLocaleString()} pts\n\nEach bet settles independently. Place them?`)) return;
 
@@ -988,14 +1079,27 @@ async function loadPredictionHistory() {
         day: "2-digit", month: "short", year: "numeric", timeZone: "Asia/Dubai"
       });
 
-      const isCorrect = item.settled && item.result && item.selected_team === item.result;
-      const isWrong = item.settled && item.result && !isCorrect;
-      const pickLabel = item.selected_team;
       const isPending = !item.settled || !item.result;
+      // Outcome comes from the server (correct per market: moneyline/total/btts).
+      const isCorrect = item.settled && item.won === true;
+      const isRefund = item.settled && item.won === null && item.result;
+      const isWrong = item.settled && item.won === false;
 
       const odds = item.odds_used ? parseFloat(item.odds_used) : null;
-      const payout = isCorrect && odds ? Math.floor(item.points_used * odds) : 0;
-      const profit = payout - item.points_used;
+      const payout = item.payout || 0;
+      const profit = item.profit || 0;
+
+      // Friendly pick + result labels for sidebets.
+      const type = (item.bet_type || "moneyline").toLowerCase();
+      const line = item.total_line ? parseFloat(item.total_line) : 2.5;
+      let pickLabel = item.selected_team;
+      if (type === "total") pickLabel = `Total ${item.selected_team === "OVER" ? "Over" : "Under"} ${line}`;
+      else if (type === "btts") pickLabel = `BTTS ${item.selected_team === "YES" ? "Yes" : "No"}`;
+      let resultText = item.result;
+      if (type !== "moneyline" && item.result) {
+        const m = item.settlement_message && item.settlement_message.match(/\((\d+)\s*-\s*(\d+)\)/);
+        resultText = m ? `${m[1]}-${m[2]}` : item.result;
+      }
 
       let statusColor = "#facc15";
       let statusText = "⏳ Pending";
@@ -1006,6 +1110,10 @@ async function loadPredictionHistory() {
         statusText = "✅ Correct";
         const oddsStr = odds ? ` @ ${odds.toFixed(2)}x` : "";
         payoutLine = `<p style="color:#22c55e;font-weight:bold;">Won ${payout.toLocaleString()} pts (+${profit.toLocaleString()} profit${oddsStr})</p>`;
+      } else if (isRefund) {
+        statusColor = "#facc15";
+        statusText = "↩ Refunded";
+        payoutLine = `<p style="color:#facc15;font-weight:bold;">Stake refunded: ${item.points_used.toLocaleString()} pts</p>`;
       } else if (isWrong) {
         statusColor = "#ef4444";
         statusText = "❌ Wrong";
@@ -1017,8 +1125,8 @@ async function loadPredictionHistory() {
         <div class="match-item">
           <h4>${item.team_a} vs ${item.team_b}</h4>
           <p style="font-size:0.82rem;color:#aaa;">${item.stage}${item.group_name ? " · " + item.group_name : ""} · ${matchDate}</p>
-          <p>Pick: <strong>${item.selected_team}</strong> · Staked: <strong>${item.points_used.toLocaleString()} pts</strong>${odds ? ` · Odds: <strong>${odds.toFixed(2)}x</strong>` : ""}</p>
-          ${item.result ? `<p style="color:#aaa;font-size:0.82rem;">Result: ${item.result}</p>` : ""}
+          <p>Pick: <strong>${pickLabel}</strong> · Staked: <strong>${item.points_used.toLocaleString()} pts</strong>${odds ? ` · Odds: <strong>${odds.toFixed(2)}x</strong>` : ""}</p>
+          ${item.result ? `<p style="color:#aaa;font-size:0.82rem;">Result: ${resultText}</p>` : ""}
           ${payoutLine}
           <p style="color:${statusColor};font-weight:bold;">${statusText}</p>
         </div>
@@ -1301,15 +1409,17 @@ async function showUserHistory(username) {
     const { user, history } = data;
     title.innerText = `${user.username}'s Bet History`;
 
-    // Stats summary
-    let wins = 0, losses = 0, draws = 0;
+    // Stats summary — use the server-computed outcome (correct per market type).
+    let wins = 0, losses = 0, draws = 0, refunds = 0;
     let totalPotProfit = 0, totalStakeRR = 0;
     history.forEach(h => {
-      if (h.selected_team === h.result) {
+      if (h.won === true) {
         wins++;
         if (h.result === "DRAW") draws++;
-      } else {
+      } else if (h.won === false) {
         losses++;
+      } else {
+        refunds++; // push/refund — counts as neither win nor loss
       }
       if (h.odds_used && parseFloat(h.odds_used) > 0) {
         totalPotProfit += (h.points_used * parseFloat(h.odds_used)) - h.points_used;
@@ -1320,13 +1430,11 @@ async function showUserHistory(username) {
     const rate = settled > 0 ? Math.round((wins / settled) * 100) : 0;
     const rrRatio = totalStakeRR > 0 ? (totalPotProfit / totalStakeRR).toFixed(2) : null;
 
-    // ROI from settled bets in history
+    // ROI from settled bets — use the actual payout the server computed.
     let totalReturned = 0, totalSettledStake = 0;
     history.forEach(h => {
       totalSettledStake += h.points_used;
-      if (h.selected_team === h.result && h.odds_used > 0) {
-        totalReturned += Math.floor(h.points_used * parseFloat(h.odds_used));
-      }
+      totalReturned += (h.payout || 0);
     });
     const roiVal = totalSettledStake > 0
       ? ((totalReturned - totalSettledStake) / totalSettledStake * 100).toFixed(1)
@@ -1349,35 +1457,51 @@ async function showUserHistory(username) {
     }
 
     listBox.innerHTML = history.map(item => {
-      const isCorrect = item.selected_team === item.result;
+      const isCorrect = item.won === true;
+      const isRefund = item.won === null;
       const isDraw = item.result === "DRAW";
-      const pickLabelM = item.selected_team;
+
+      const type = (item.bet_type || "moneyline").toLowerCase();
+      const line = item.total_line ? parseFloat(item.total_line) : 2.5;
+      let pickLabel = item.selected_team;
+      if (type === "total") pickLabel = `Total ${item.selected_team === "OVER" ? "Over" : "Under"} ${line}`;
+      else if (type === "btts") pickLabel = `BTTS ${item.selected_team === "YES" ? "Yes" : "No"}`;
+      let resultText = item.result;
+      if (type !== "moneyline" && item.result) {
+        const m = item.settlement_message && item.settlement_message.match(/\((\d+)\s*-\s*(\d+)\)/);
+        resultText = m ? `${m[1]}-${m[2]}` : item.result;
+      }
+
       let color = "#ef4444";
       let label = "❌ Wrong";
-
       if (isCorrect) {
         color = "#22c55e";
         label = isDraw ? "✅ Correct (Draw)" : "✅ Correct";
+      } else if (isRefund) {
+        color = "#facc15";
+        label = "↩ Refunded";
       }
 
       const odds = item.odds_used ? parseFloat(item.odds_used) : null;
-      const payout = isCorrect && odds ? Math.floor(item.points_used * odds) : 0;
-      const profit = payout - item.points_used;
+      const payout = item.payout || 0;
+      const profit = item.profit || 0;
 
       const matchDate = new Date(item.match_time).toLocaleDateString("en-GB", {
         day: "2-digit", month: "short", year: "numeric", timeZone: "Asia/Dubai"
       });
 
+      let outcomeLine;
+      if (isCorrect) outcomeLine = `<p style="color:#22c55e;font-weight:bold;">Won ${payout.toLocaleString()} pts (+${profit.toLocaleString()} profit)</p>`;
+      else if (isRefund) outcomeLine = `<p style="color:#facc15;font-weight:bold;">Refunded ${item.points_used.toLocaleString()} pts</p>`;
+      else outcomeLine = `<p style="color:#ef4444;font-weight:bold;">Lost ${item.points_used.toLocaleString()} pts</p>`;
+
       return `
         <div class="match-item">
           <h4>${item.team_a} vs ${item.team_b}</h4>
           <p style="font-size:0.82rem;color:#aaa;">${item.stage}${item.group_name ? " · " + item.group_name : ""} · ${matchDate}</p>
-          <p>Pick: <strong>${item.selected_team}</strong> · ${item.points_used.toLocaleString()} pts${odds ? ` @ ${odds.toFixed(2)}x` : ""}</p>
-          <p style="color:#aaa;font-size:0.82rem;">Result: ${item.result}</p>
-          ${isCorrect
-            ? `<p style="color:#22c55e;font-weight:bold;">Won ${payout.toLocaleString()} pts (+${profit.toLocaleString()} profit)</p>`
-            : `<p style="color:#ef4444;font-weight:bold;">Lost ${item.points_used.toLocaleString()} pts</p>`
-          }
+          <p>Pick: <strong>${pickLabel}</strong> · ${item.points_used.toLocaleString()} pts${odds ? ` @ ${odds.toFixed(2)}x` : ""}</p>
+          <p style="color:#aaa;font-size:0.82rem;">Result: ${resultText}</p>
+          ${outcomeLine}
           <p style="color:${color};font-weight:bold;">${label}</p>
         </div>
       `;
@@ -1812,19 +1936,25 @@ async function showRecentResults() {
 
     let betsHtml = "";
     results.forEach(r => {
-      const amountStr = r.won
-        ? `+${r.payout.toLocaleString()} pts`
-        : `${r.profit.toLocaleString()} pts`;
+      const isRefund = r.refunded === true;
+      const state = isRefund ? "refund" : (r.won ? "won" : "lost");
+      const amountStr = isRefund
+        ? `${r.stake.toLocaleString()} pts back`
+        : (r.won ? `+${r.payout.toLocaleString()} pts` : `${r.profit.toLocaleString()} pts`);
+      const badgeClass = isRefund ? "badge-lost" : (r.won ? "badge-won" : "badge-lost");
+      const badgeText = isRefund ? "↩ REFUND" : (r.won ? "✅ WON" : "❌ LOST");
+      const amtClass = isRefund ? "" : (r.won ? "amount-won" : "amount-lost");
+      const itemClass = isRefund ? "" : (r.won ? "won" : "lost");
       const oddsStr = r.odds ? ` @ ${parseFloat(r.odds).toFixed(2)}x` : "";
       betsHtml += `
-        <div class="result-item ${r.won ? "won" : "lost"}">
+        <div class="result-item ${itemClass}">
           <div class="result-match-row">
             <span class="result-match-name">${r.match}</span>
-            <span class="result-badge ${r.won ? "badge-won" : "badge-lost"}">${r.won ? "✅ WON" : "❌ LOST"}</span>
+            <span class="result-badge ${badgeClass}">${badgeText}</span>
           </div>
           <div class="result-detail">
             <span>Picked <strong>${r.pick}</strong>${oddsStr} · Result: <strong>${r.result}</strong></span>
-            <span class="result-amount ${r.won ? "amount-won" : "amount-lost"}">${amountStr}</span>
+            <span class="result-amount ${amtClass}">${amountStr}</span>
           </div>
           <div class="result-stake">Stake: ${r.stake.toLocaleString()} pts</div>
         </div>
