@@ -187,8 +187,12 @@ function bbSnapVal(raw, max) {
 function bbPaintSlider(slider) {
   const max = parseFloat(slider.max) || 0;
   const pct = max > 0 ? (parseFloat(slider.value) / max) * 100 : 0;
+  // A hair of blend at the fill boundary (instead of one hard color-stop)
+  // kills the jagged/blocky edge — imperceptible as a fade, just smoother.
+  const p0 = Math.max(0, pct - 0.6);
+  const p1 = Math.min(100, pct + 0.6);
   slider.style.background =
-    `linear-gradient(to right, #ffd600 0%, #ffd600 ${pct}%, rgba(255,255,255,0.14) ${pct}%, rgba(255,255,255,0.14) 100%)`;
+    `linear-gradient(to right, #ffd600 0%, #ffd600 ${p0}%, rgba(255,255,255,0.14) ${p1}%, rgba(255,255,255,0.14) 100%)`;
 }
 
 // Deliberate stake set (typing, quick-stake buttons, elastic auto-clamp).
@@ -1095,10 +1099,6 @@ if (match.result) {
             <p>
               Stage: ${match.stage}
               ${match.group_name ? " - " + match.group_name : ""}
-            </p>
-
-            <p>
-              Venue: ${match.venue || "TBA"}
             </p>
 
             <p>

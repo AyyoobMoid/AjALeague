@@ -2406,6 +2406,12 @@ button:hover::after {
 .bb-slider::-webkit-slider-runnable-track {
   height: 8px;
   border-radius: 6px;
+  /* CRITICAL: without this, WebKit/Chromium paints its own native track
+     background UNDER/OVER our JS-set gradient on the host element, which is
+     exactly what was causing the persistent blocky/hard-edged look — the
+     browser's default flat fill was showing through instead of our gradient. */
+  background: transparent;
+  background-color: transparent;
 }
 .bb-slider::-moz-range-thumb {
   width: 24px;
