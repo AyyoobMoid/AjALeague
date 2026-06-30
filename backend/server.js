@@ -844,14 +844,18 @@ async function fetchAndStoreSidebets() {
 
         if (!evtOdds.bookmakers || evtOdds.bookmakers.length === 0) continue;
 
-        // 4. Average Over/Under at the 2.5 line, and BTTS Yes/No, across books.
-        const over = [], under = [], yes = [], no = [];
+        // 4. Group totals outcomes by their ACTUAL line, across all books —
+        //    don't assume every book quotes 2.5. BTTS is line-independent.
+        const linesMap = {}; // { "2.5": { point: 2.5, over: [...], under: [...] } }
+        const yes = [], no = [];
         evtOdds.bookmakers.forEach(bk => {
           (bk.markets || []).forEach(mk => {
             if (mk.key === "totals") {
               mk.outcomes.forEach(o => {
-                if (o.point === 2.5 && o.name === "Over") over.push(o.price);
-                if (o.point === 2.5 && o.name === "Under") under.push(o.price);
+                const k = String(o.point);
+                if (!linesMap[k]) linesMap[k] = { point: o.point, over: [], under: [] };
+                if (o.name === "Over") linesMap[k].over.push(o.price);
+                if (o.name === "Under") linesMap[k].under.push(o.price);
               });
             } else if (mk.key === "btts") {
               mk.outcomes.forEach(o => {
@@ -861,19 +865,50 @@ async function fetchAndStoreSidebets() {
             }
           });
         });
+
+        // 4b. Prefer 2.5 if any book quotes BOTH sides of it (the standard,
+        //     most-recognizable line). Otherwise fall back to whichever line
+        //     has the most combined bookmaker coverage — the most consensus,
+        //     so a thin one-off alt line doesn't get picked over a popular one.
+        //     The chosen line is what gets STORED and DISPLAYED, so the label
+        //     ("Over 1.5") and the odds always match what was actually priced —
+        //     never a hardcoded 2.5 next to odds for a different line.
+        let chosenLine = null;
+        if (linesMap["2.5"] && linesMap["2.5"].over.length > 0 && linesMap["2.5"].under.length > 0) {
+          chosenLine = linesMap["2.5"];
+        } else {
+          let best = null;
+          Object.values(linesMap).forEach(l => {
+            if (l.over.length === 0 || l.under.length === 0) return; // need both sides priced
+            const coverage = l.over.length + l.under.length;
+            if (!best || coverage > best.coverage) best = { ...l, coverage };
+          });
+          chosenLine = best;
+        }
+
         const avg = arr => arr.length ? Math.round((arr.reduce((a, b) => a + b, 0) / arr.length) * 100) / 100 : null;
 
-        const ou = applyTwoWayMargin(avg(over), avg(under), 1.05);
+        let ou = { a: null, b: null };
+        let lineUsed = null;
+        if (chosenLine) {
+          ou = applyTwoWayMargin(avg(chosenLine.over), avg(chosenLine.under), 1.05);
+          lineUsed = chosenLine.point;
+        }
         const bt = applyTwoWayMargin(avg(yes), avg(no), 1.05);
 
         // 5. Store whatever we got (only overwrite columns we have data for).
+        //    total_line is the REAL line that was priced — never hardcoded —
+        //    so the UI label, the odds, and settlement always agree.
         const sets = [], vals = [];
-        if (ou.a && ou.b) { sets.push("total_line = ?", "odds_over = ?", "odds_under = ?"); vals.push(2.5, ou.a, ou.b); }
+        if (ou.a && ou.b && lineUsed !== null) { sets.push("total_line = ?", "odds_over = ?", "odds_under = ?"); vals.push(lineUsed, ou.a, ou.b); }
         if (bt.a && bt.b) { sets.push("odds_btts_yes = ?", "odds_btts_no = ?"); vals.push(bt.a, bt.b); }
         if (sets.length === 0) continue;
         vals.push(dbMatch.id);
         db.run(`UPDATE matches SET ${sets.join(", ")} WHERE id = ?`, vals,
-          () => console.log(`Sidebets: ${dbMatch.team_a} v ${dbMatch.team_b} | O/U2.5 ${ou.a}/${ou.b} | BTTS ${bt.a}/${bt.b}`));
+          () => {
+            const note = (lineUsed !== null && lineUsed !== 2.5) ? " [non-standard line, no 2.5 quoted]" : "";
+            console.log(`Sidebets: ${dbMatch.team_a} v ${dbMatch.team_b} | O/U${lineUsed !== null ? lineUsed : "—"} ${ou.a}/${ou.b}${note} | BTTS ${bt.a}/${bt.b}`);
+          });
       }
     });
   } catch (err) {
