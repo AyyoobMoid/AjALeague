@@ -539,11 +539,39 @@ async function autoSettleMatches() {
         for (const apiMatch of finishedMatches) {
           const homeTeam = normalizeTeam(apiMatch.homeTeam.name);
           const awayTeam = normalizeTeam(apiMatch.awayTeam.name);
-          // Read full-time score defensively — structure can vary, and for
-          // knockouts decided on penalties we don't need it at all.
-          const ft = (apiMatch.score && apiMatch.score.fullTime) || {};
-          const homeScore = ft.home;
-          const awayScore = ft.away;
+          const sc = apiMatch.score || {};
+          const isPenaltyMatch = sc.duration === "PENALTY_SHOOTOUT";
+
+          // ── Two DIFFERENT scores matter here, and conflating them is a bug: ──
+          //
+          // 1) WINNER / who-advanced: football-data's `fullTime` INCLUDES the
+          //    shootout (e.g. a 1-1 that went to pens 4-5 shows fullTime 4-5),
+          //    so `fullTime` reliably gives the advancer. `winner` itself is
+          //    null for shootouts, so we don't depend on it.
+          //
+          // 2) GOALS for sidebets (Over/Under, BTTS): these must EXCLUDE the
+          //    shootout. The real match goals are `regularTime` + `extraTime`.
+          //    For a normal match those aren't present, so we use `fullTime`
+          //    (which then contains no penalties anyway).
+          const ft  = sc.fullTime    || {};
+          const rt  = sc.regularTime || {};
+          const et  = sc.extraTime   || {};
+
+          // Winner score (penalty-inclusive when a shootout happened).
+          const winHome = ft.home;
+          const winAway = ft.away;
+
+          // True match goals, penalty-EXCLUSIVE.
+          let goalHome, goalAway;
+          if (isPenaltyMatch && typeof rt.home === "number" && typeof rt.away === "number") {
+            // regularTime + extraTime (extraTime may be 0s or absent)
+            goalHome = rt.home + (typeof et.home === "number" ? et.home : 0);
+            goalAway = rt.away + (typeof et.away === "number" ? et.away : 0);
+          } else {
+            // Non-shootout: fullTime already excludes penalties.
+            goalHome = ft.home;
+            goalAway = ft.away;
+          }
 
           // Find the matching DB row by team names (order-independent)
           const dbMatch = pendingMatches.find(m =>
@@ -553,42 +581,50 @@ async function autoSettleMatches() {
 
           let result;
           if (dbMatch && isKnockoutStage(dbMatch.stage)) {
-            // KNOCKOUT: no draws. Settle on who ADVANCED (penalty-aware).
-            // football-data.org sets score.winner to HOME_TEAM / AWAY_TEAM
-            // based on the full result including extra time + penalties.
-            const w = apiMatch.score && apiMatch.score.winner;
-            if (w === "HOME_TEAM") result = homeTeam;
-            else if (w === "AWAY_TEAM") result = awayTeam;
-            else {
-              // winner not yet populated (e.g. match marked FINISHED before
-              // pens recorded) — skip this cycle, try again next poll.
-              console.log(`Knockout ${homeTeam} v ${awayTeam}: winner not set yet, skipping`);
+            // KNOCKOUT: who ADVANCED. Use the winner field if set; otherwise the
+            // penalty-inclusive fullTime is decisive (shootouts always produce a
+            // non-draw fullTime). Penalty tally is a last-resort tiebreak.
+            const w = sc.winner;
+            const pens = sc.penalties || {};
+            const penHome = (typeof pens.home === "number") ? pens.home : null;
+            const penAway = (typeof pens.away === "number") ? pens.away : null;
+
+            if (w === "HOME_TEAM") {
+              result = homeTeam;
+            } else if (w === "AWAY_TEAM") {
+              result = awayTeam;
+            } else if (typeof winHome === "number" && typeof winAway === "number" && winHome !== winAway) {
+              // Decisive fullTime (includes shootout for pen matches) → advancer.
+              result = winHome > winAway ? homeTeam : awayTeam;
+              if (isPenaltyMatch) console.log(`Knockout ${homeTeam} v ${awayTeam}: shootout → fullTime ${winHome}-${winAway} → ${result}`);
+            } else if (penHome !== null && penAway !== null && penHome !== penAway) {
+              result = penHome > penAway ? homeTeam : awayTeam;
+              console.log(`Knockout ${homeTeam} v ${awayTeam}: decided on penalties ${penHome}-${penAway} → ${result}`);
+            } else {
+              console.log(`Knockout ${homeTeam} v ${awayTeam}: winner undeterminable, skipping. score=${JSON.stringify(sc)}`);
               continue;
             }
           } else {
             // GROUP STAGE: 90-minute result, draw is a valid outcome.
-            // If the score structure is missing, skip rather than crash.
-            if (homeScore === undefined || homeScore === null ||
-                awayScore === undefined || awayScore === null) {
+            if (goalHome === undefined || goalHome === null ||
+                goalAway === undefined || goalAway === null) {
               console.log(`${homeTeam} v ${awayTeam}: full-time score missing, skipping`);
               continue;
             }
-            if (homeScore === awayScore) result = "DRAW";
-            else if (homeScore > awayScore) result = homeTeam;
+            if (goalHome === goalAway) result = "DRAW";
+            else if (goalHome > goalAway) result = homeTeam;
             else result = awayTeam;
           }
 
           if (dbMatch) {
-            // Map API home/away goals onto the DB's team_a/team_b orientation so
-            // sidebets (total goals, BTTS) settle correctly regardless of order.
-            // Note: for knockouts decided on penalties, fullTime goals are the
-            // 90+ET score — penalties are NOT counted toward O/U or BTTS (standard rule).
+            // Map the PENALTY-EXCLUSIVE match goals onto the DB's team_a/team_b
+            // orientation so Over/Under + BTTS settle on real goals only.
             let goalsA, goalsB;
-            if (typeof homeScore === "number" && typeof awayScore === "number") {
+            if (typeof goalHome === "number" && typeof goalAway === "number") {
               if (normalizeTeam(dbMatch.team_a) === homeTeam) {
-                goalsA = homeScore; goalsB = awayScore;
+                goalsA = goalHome; goalsB = goalAway;
               } else {
-                goalsA = awayScore; goalsB = homeScore;
+                goalsA = goalAway; goalsB = goalHome;
               }
             }
             settleMatch(dbMatch.id, result, (err, status) => {
