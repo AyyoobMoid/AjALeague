@@ -810,8 +810,18 @@ async function fetchAndStoreSidebets() {
     if (!evRes.ok) { console.log("Sidebet events error:", evRes.status); return; }
     const events = await evRes.json();
 
-    // 2. Which DB matches still need sidebet odds (unsettled only).
-    db.all("SELECT * FROM matches WHERE status != 'settled'", [], async (err, matches) => {
+    // 2. Which DB matches still NEED sidebet odds — i.e. don't have a full set
+    //    yet. Each per-event call costs 2 credits (totals + btts = 2 markets),
+    //    so refetching matches that already have good odds every day is what
+    //    blew through the monthly quota. Now: fetch once per match (when it's
+    //    first added), and rely on /api/admin/refresh-sidebets for a manual
+    //    top-up close to kickoff if you want fresher numbers.
+    db.all(
+      `SELECT * FROM matches
+       WHERE status != 'settled'
+         AND (odds_over IS NULL OR odds_under IS NULL OR odds_btts_yes IS NULL OR odds_btts_no IS NULL)`,
+      [],
+      async (err, matches) => {
       if (err || !matches || matches.length === 0) return;
 
       for (const dbMatch of matches) {
