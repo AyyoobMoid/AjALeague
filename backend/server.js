@@ -942,7 +942,12 @@ function evaluateBet(betType, selectedTeam, result, settlementMessage, totalLine
   const sel = String(selectedTeam).toUpperCase();
   if (type === "total") {
     const line = totalLine ? parseFloat(totalLine) : 2.5;
-    const isOver = (ga + gb) > line;
+    const totalGoals = ga + gb;
+    // PUSH: an exact tie on a whole-number line (e.g. line=2, match has 2
+    // goals) is neither Over nor Under — refund both sides. Can only happen
+    // on a whole-number line; a .5 line can never tie since goals are integers.
+    if (totalGoals === line) return null;
+    const isOver = totalGoals > line;
     return (sel === "OVER" && isOver) || (sel === "UNDER" && !isOver);
   }
   if (type === "btts") {
