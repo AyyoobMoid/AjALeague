@@ -79,13 +79,9 @@ function renderBetBuilder(match) {
   const markets = marketsFor(match);
   if (markets.length === 0) return '';
 
-  // Max a slider can reach = the user's current balance (rounded down to a
-  // multiple of 5). Fallback to a sane default if balance isn't known yet.
+  // Balance caps the combined stake across all legs (elastic max logic below).
   const bal = (typeof lastKnownPoints === 'number' && lastKnownPoints > 0)
     ? Math.floor(lastKnownPoints / 5) * 5 : 0;
-  // Slider step scales with balance so big balances stay draggable, but never
-  // below 5 (the betting increment). Typing in the number box gives fine control.
-  const sliderStep = bal > 100000 ? 500 : bal > 20000 ? 100 : bal > 2000 ? 25 : 5;
 
   const marketHtml = markets.map(mkt => {
     const optButtons = mkt.options.map(o =>
@@ -110,16 +106,19 @@ function renderBetBuilder(match) {
             <span class="bb-stake-val" id="bb-val-${match.id}-${mkt.key}">0 pts</span>
           </div>
           <input type="range" class="bb-slider" id="bb-slider-${match.id}-${mkt.key}"
-            min="0" max="${bal}" step="${sliderStep}" value="0"
+            min="0" max="${bal}" step="1" value="0"
             oninput="bbSlide(${match.id}, '${mkt.key}', this.value)">
-          <div class="bb-stake-readout">
+          <div class="bb-stake-row">
             <input type="number" class="bb-amount" id="bb-amt-${match.id}-${mkt.key}"
               placeholder="0" min="0" max="${bal}" step="5" value=""
               oninput="bbType(${match.id}, '${mkt.key}', this.value)">
-            <button type="button" class="bb-max-btn" onclick="bbMax(${match.id}, '${mkt.key}')">Max</button>
+            <div class="bb-quick-row">
+              <button type="button" class="bb-quick" onclick="bbQuick(${match.id}, '${mkt.key}', 10)">10%</button>
+              <button type="button" class="bb-quick" onclick="bbQuick(${match.id}, '${mkt.key}', 50)">50%</button>
+              <button type="button" class="bb-quick" onclick="bbQuick(${match.id}, '${mkt.key}', 100)">100%</button>
+            </div>
           </div>
           <div class="bb-leg-payout" id="bb-pay-${match.id}-${mkt.key}"></div>
-        </div>
         </div>
       </div>
     </div>`;
@@ -149,17 +148,14 @@ function bbToggle(matchId, marketKey, checked) {
   if (!builderState[matchId]) builderState[matchId] = {};
   if (checked) {
     if (!builderState[matchId][marketKey]) builderState[matchId][marketKey] = { pick: null, odds: null, label: null, amount: 0 };
-    // Paint the slider's initial (empty) fill when the market is revealed.
-    const slider = document.getElementById(`bb-slider-${matchId}-${marketKey}`);
-    if (slider) bbPaintSlider(slider);
   } else {
     delete builderState[matchId][marketKey];
-    // Reset the controls so re-ticking starts clean.
     const slider = document.getElementById(`bb-slider-${matchId}-${marketKey}`);
     const num = document.getElementById(`bb-amt-${matchId}-${marketKey}`);
-    if (slider) { slider.value = 0; bbPaintSlider(slider); }
+    if (slider) slider.value = 0;
     if (num) num.value = '';
   }
+  // Unticking frees this leg's stake back to the others immediately (elastic).
   bbRecalc(matchId);
 }
 
@@ -177,72 +173,129 @@ function bbPick(matchId, marketKey, btn) {
   bbRecalc(matchId);
 }
 
-// Snap any value to the nearest valid bet increment (multiple of 5), clamped to balance.
-function bbSnap(matchId, raw) {
-  const builder = document.getElementById(`bet-builder-${matchId}`);
-  const bal = builder ? parseInt(builder.dataset.balance) || 0 : 0;
-  let v = Math.round((parseInt(raw) || 0) / 5) * 5;
+// Round to the nearest valid bet increment (multiple of 5), clamped to a max.
+function bbSnapVal(raw, max) {
+  let v = Math.round((parseFloat(raw) || 0) / 5) * 5;
   if (v < 0) v = 0;
-  if (v > bal) v = Math.floor(bal / 5) * 5;
+  const m = Math.floor((max || 0) / 5) * 5;
+  if (v > m) v = m;
   return v;
 }
 
-// Write a value into BOTH the slider and the number box for a market, then recalc.
-function bbSetStake(matchId, marketKey, value) {
-  const v = bbSnap(matchId, value);
+// Paint the slider's filled portion using its OWN current value/max — used
+// both mid-drag (raw, pixel-exact) and after a deliberate jump (snapped).
+function bbPaintSlider(slider) {
+  const max = parseFloat(slider.max) || 0;
+  const pct = max > 0 ? (parseFloat(slider.value) / max) * 100 : 0;
+  slider.style.background =
+    `linear-gradient(to right, #ffd600 0%, #ffd600 ${pct}%, rgba(255,255,255,0.14) ${pct}%, rgba(255,255,255,0.14) 100%)`;
+}
+
+// Deliberate stake set (typing, quick-stake buttons, elastic auto-clamp).
+// Repositions the slider thumb — fine here since it's not a live drag.
+function bbCommitStake(matchId, marketKey, v) {
+  if (!builderState[matchId]) builderState[matchId] = {};
+  if (!builderState[matchId][marketKey]) builderState[matchId][marketKey] = { amount: 0 };
+  builderState[matchId][marketKey].amount = v;
   const slider = document.getElementById(`bb-slider-${matchId}-${marketKey}`);
   const num = document.getElementById(`bb-amt-${matchId}-${marketKey}`);
-  if (slider) { slider.value = v; bbPaintSlider(slider); }
+  if (slider) slider.value = v;
   if (num) num.value = v === 0 ? '' : v;
   bbRecalc(matchId);
 }
 
-// Slider dragged → sync number box.
-function bbSlide(matchId, marketKey, value) {
-  bbSetStake(matchId, marketKey, value);
-}
-// Number typed → sync slider. (Don't snap mid-type to allow free entry; snap on recalc.)
-function bbType(matchId, marketKey, value) {
-  const v = bbSnap(matchId, value);
+// Slider dragged — LIVE, buttery: never overwrite slider.value mid-drag
+// (the native thumb tracks the pointer exactly, step=1, zero jagged jumps).
+// Only the displayed number + state snap to multiples of 5.
+function bbSlide(matchId, marketKey, rawValue) {
   const slider = document.getElementById(`bb-slider-${matchId}-${marketKey}`);
-  if (slider) { slider.value = v; bbPaintSlider(slider); }
-  bbRecalc(matchId);
-}
-// "Max" → set this market's stake to the full current balance.
-function bbMax(matchId, marketKey) {
-  const builder = document.getElementById(`bet-builder-${matchId}`);
-  const bal = builder ? parseInt(builder.dataset.balance) || 0 : 0;
-  bbSetStake(matchId, marketKey, bal);
-}
-// Paint the slider's filled portion (visual progress) via a CSS gradient.
-function bbPaintSlider(slider) {
-  const max = parseFloat(slider.max) || 1;
-  const pct = max > 0 ? (parseFloat(slider.value) / max) * 100 : 0;
-  slider.style.background =
-    `linear-gradient(to right, #ffd600 0%, #ffd600 ${pct}%, rgba(255,255,255,0.12) ${pct}%, rgba(255,255,255,0.12) 100%)`;
+  if (!slider) return;
+  bbPaintSlider(slider); // immediate, uses the exact raw position — no lag
+  const max = parseFloat(slider.max) || 0;
+  const v = bbSnapVal(rawValue, max);
+  const num = document.getElementById(`bb-amt-${matchId}-${marketKey}`);
+  if (num) num.value = v === 0 ? '' : v;
+  if (!builderState[matchId]) builderState[matchId] = {};
+  if (!builderState[matchId][marketKey]) builderState[matchId][marketKey] = { amount: 0 };
+  builderState[matchId][marketKey].amount = v;
+  // Recalc elastic maxes for the OTHER legs live, but never reposition THIS
+  // slider while it's being actively dragged.
+  bbRecalc(matchId, marketKey);
 }
 
-function bbRecalc(matchId) {
+// Number box typed.
+function bbType(matchId, marketKey, typed) {
+  const slider = document.getElementById(`bb-slider-${matchId}-${marketKey}`);
+  const max = slider ? (parseFloat(slider.max) || 0) : 0;
+  const v = bbSnapVal(typed, max);
+  bbCommitStake(matchId, marketKey, v);
+}
+
+// 10% / 50% / 100% quick-stake — percentage of THIS leg's current elastic max.
+function bbQuick(matchId, marketKey, pct) {
+  const slider = document.getElementById(`bb-slider-${matchId}-${marketKey}`);
+  const max = slider ? (parseFloat(slider.max) || 0) : 0;
+  const raw = Math.floor((max * pct) / 100);
+  const v = bbSnapVal(raw, max);
+  bbCommitStake(matchId, marketKey, v);
+}
+
+function bbRecalc(matchId, activeKey) {
   const state = builderState[matchId] || {};
   const builder = document.getElementById(`bet-builder-${matchId}`);
   const balance = builder ? parseInt(builder.dataset.balance) || 0 : 0;
+  const tickedKeys = Object.keys(state);
+
+  // Sync amounts from each leg's number box, EXCEPT the actively-dragged leg
+  // (bbSlide already wrote its precise snapped amount straight into state).
+  tickedKeys.forEach(key => {
+    if (key === activeKey) return;
+    const amtEl = document.getElementById(`bb-amt-${matchId}-${key}`);
+    state[key].amount = amtEl ? (parseInt(amtEl.value) || 0) : 0;
+  });
+
+  // ── ELASTIC MAX ── each leg's ceiling = balance minus what's currently
+  // committed to every OTHER ticked leg. Two passes settle up to 3 markets.
+  for (let pass = 0; pass < 2; pass++) {
+    tickedKeys.forEach(key => {
+      const othersSum = tickedKeys.filter(k => k !== key).reduce((s, k) => s + (state[k].amount || 0), 0);
+      const thisMax = Math.max(0, Math.floor((balance - othersSum) / 5) * 5);
+      state[key]._max = thisMax;
+      if ((state[key].amount || 0) > thisMax) {
+        state[key].amount = thisMax;
+        const numEl = document.getElementById(`bb-amt-${matchId}-${key}`);
+        if (numEl) numEl.value = thisMax === 0 ? '' : thisMax;
+        // Don't yank the slider the user is actively dragging out from under them.
+        if (key !== activeKey) {
+          const sliderEl = document.getElementById(`bb-slider-${matchId}-${key}`);
+          if (sliderEl) sliderEl.value = thisMax;
+        }
+      }
+    });
+  }
+
+  // Apply the (possibly shrunk) ceiling, repaint, and update per-leg displays.
   const lines = [];
   let totalStake = 0, totalReturn = 0, anyInvalid = false, anyLeg = false;
 
-  Object.keys(state).forEach(key => {
+  tickedKeys.forEach(key => {
     const leg = state[key];
-    const amtEl = document.getElementById(`bb-amt-${matchId}-${key}`);
-    const amt = amtEl ? parseInt(amtEl.value) || 0 : 0;
-    leg.amount = amt;
+    const amt = leg.amount || 0;
 
-    // Live per-leg value + payout shown right under that market's slider.
+    const sliderEl = document.getElementById(`bb-slider-${matchId}-${key}`);
+    if (sliderEl) {
+      sliderEl.max = leg._max;
+      bbPaintSlider(sliderEl);
+    }
+
     const valEl = document.getElementById(`bb-val-${matchId}-${key}`);
-    const payEl = document.getElementById(`bb-pay-${matchId}-${key}`);
     if (valEl) valEl.textContent = `${amt.toLocaleString()} pts`;
+
+    const payEl = document.getElementById(`bb-pay-${matchId}-${key}`);
     if (payEl) {
       if (leg.pick && amt > 0) {
         const legRet = Math.floor(amt * leg.odds);
-        payEl.innerHTML = `${leg.label} @ ${leg.odds.toFixed(2)}x → wins <strong>${legRet.toLocaleString()}</strong> pts`;
+        payEl.innerHTML = `${leg.label} @ ${leg.odds.toFixed(2)}x → <strong>${legRet.toLocaleString()} pts</strong>`;
         payEl.style.display = 'block';
       } else if (amt > 0 && !leg.pick) {
         payEl.innerHTML = `Pick an option above`;
@@ -278,7 +331,7 @@ function bbRecalc(matchId) {
   if (anyLeg && linesEl) {
     receipt.classList.remove('hidden');
     linesEl.innerHTML = lines.join('');
-    totalEl.innerHTML = `<span>Total staked: <strong>${totalStake.toLocaleString()}</strong> pts</span><span>If all win: <strong class="bb-rcpt-win">${totalReturn.toLocaleString()}</strong> pts</span>`;
+    totalEl.innerHTML = `<span>Total staked: <strong>${totalStake.toLocaleString()}</strong> pts</span><span class="bb-total-win">If all win: <strong>${totalReturn.toLocaleString()}</strong> pts</span>`;
     if (warnEl) {
       if (overBalance) {
         warnEl.classList.remove('hidden');
