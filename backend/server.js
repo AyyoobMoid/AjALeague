@@ -252,8 +252,29 @@ app.post("/api/roulette/spin", auth, (req, res) => {
 app.get("/api/roulette/house", (req, res) => {
   db.get("SELECT COALESCE(SUM(house_net),0) AS house_net, COUNT(*) AS spins FROM roulette_spins", [], (err, row) => {
     if (err) return res.status(500).json({ message: "Could not load roulette house total" });
-    res.json({ rouletteHouseNet: row.house_net, totalSpins: row.spins });
+    res.json({ rouletteHouseNet: Number(row.house_net) || 0, totalSpins: Number(row.spins) || 0 });
   });
+});
+
+// The logged-in player's own roulette P&L (sum of their player_net) + counts.
+app.get("/api/roulette/my-stats", auth, (req, res) => {
+  db.get(
+    `SELECT COALESCE(SUM(player_net),0) AS net,
+            COALESCE(SUM(bet),0)        AS wagered,
+            COUNT(*)                    AS spins,
+            COALESCE(SUM(CASE WHEN won THEN 1 ELSE 0 END),0) AS wins
+     FROM roulette_spins WHERE user_id = ?`,
+    [req.user.id],
+    (err, row) => {
+      if (err) return res.status(500).json({ message: "Could not load roulette stats" });
+      res.json({
+        net: Number(row.net) || 0,        // signed: + means player is up on roulette
+        wagered: Number(row.wagered) || 0,
+        spins: Number(row.spins) || 0,
+        wins: Number(row.wins) || 0,
+      });
+    }
+  );
 });
 
 // ─── LEADERBOARD ─────────────────────────────────────────────────────────────
@@ -1642,7 +1663,9 @@ app.get("/api/house-total", (req, res) => {
       // Add roulette house profit (sum of house_net across all spins) so the
       // house tab reflects BOTH prediction margin and roulette margin.
       db.get("SELECT COALESCE(SUM(house_net),0) AS roulette_net FROM roulette_spins", [], (rErr, rRow) => {
-        const rouletteNet = (rErr || !rRow) ? 0 : rRow.roulette_net;
+        // pg returns SUM() of a bigint/int column as a STRING — coerce to Number
+        // or `houseTotal + rouletteNet` would string-concatenate (e.g. "135796-1495").
+        const rouletteNet = (rErr || !rRow) ? 0 : Number(rRow.roulette_net) || 0;
         res.json({
           houseTotal: houseTotal + rouletteNet,
           predictionHouse: houseTotal,
