@@ -621,6 +621,68 @@ function rUpdateSpinBtn() {
   btn.textContent = `Spin for ${rState.amount.toLocaleString()} pts`;
 }
 
+// ── Web Audio sound (no external files — synthesised) ──
+let rAudioCtx = null;
+function rAudio() {
+  if (!rAudioCtx) {
+    try { rAudioCtx = new (window.AudioContext || window.webkitAudioContext)(); }
+    catch (e) { rAudioCtx = null; }
+  }
+  return rAudioCtx;
+}
+function rTick(when, freq = 900, vol = 0.06) {
+  const ctx = rAudio(); if (!ctx) return;
+  const o = ctx.createOscillator(), g = ctx.createGain();
+  o.type = "square"; o.frequency.value = freq;
+  g.gain.setValueAtTime(vol, when);
+  g.gain.exponentialRampToValueAtTime(0.0001, when + 0.05);
+  o.connect(g); g.connect(ctx.destination);
+  o.start(when); o.stop(when + 0.05);
+}
+function rPlaySpinTicks(durationMs) {
+  const ctx = rAudio(); if (!ctx) return;
+  const now = ctx.currentTime;
+  const dur = durationMs / 1000;
+  // ticks that space out as the wheel "slows" (ease-out cadence)
+  let t = 0, gap = 0.05;
+  while (t < dur) {
+    rTick(now + t, 800 + Math.random() * 200, 0.05);
+    gap *= 1.12;              // each gap a bit longer → decelerating clicks
+    t += gap;
+  }
+}
+function rPlayWin() {
+  const ctx = rAudio(); if (!ctx) return;
+  const now = ctx.currentTime;
+  [523, 659, 784, 1047].forEach((f, i) => rTick(now + i * 0.1, f, 0.12)); // ascending arpeggio
+}
+function rPlayLose() {
+  const ctx = rAudio(); if (!ctx) return;
+  const now = ctx.currentTime;
+  const o = ctx.createOscillator(), g = ctx.createGain();
+  o.type = "sawtooth"; o.frequency.setValueAtTime(300, now);
+  o.frequency.exponentialRampToValueAtTime(90, now + 0.4); // descending "womp"
+  g.gain.setValueAtTime(0.12, now);
+  g.gain.exponentialRampToValueAtTime(0.0001, now + 0.42);
+  o.connect(g); g.connect(ctx.destination);
+  o.start(now); o.stop(now + 0.42);
+}
+
+// Center angle (degrees) of each colour band on the wheel gradient, so the
+// wheel can LAND pointing at the real result rather than a fixed spin.
+// Gradient: red 0-40, black 40-80, red 80-120, black 120-160, GREEN 160-200,
+// red 200-240, black 240-280, red 280-320, black 320-360.
+const R_LAND = {
+  green: 180,                          // the single green band centre
+  red:   [20, 100, 220, 300],          // red band centres
+  black: [60, 140, 260, 340],          // black band centres
+};
+function rLandingAngle(result) {
+  if (result === "green") return R_LAND.green;
+  const opts = R_LAND[result];
+  return opts[Math.floor(Math.random() * opts.length)];
+}
+
 async function rSpin() {
   if (rState.spinning || !rState.color || rState.amount < 5) return;
   rState.spinning = true;
@@ -628,12 +690,10 @@ async function rSpin() {
   const out = document.getElementById("rOutcome");
   out.classList.add("hidden");
 
-  // start the visual spin
   const wheel = document.getElementById("rouletteWheel");
-  wheel.classList.add("spinning");
   const badge = document.getElementById("rouletteResultBadge");
   badge.textContent = "…";
-  badge.className = "roulette-result";
+  badge.className = "roulette-hub";
 
   const token = localStorage.getItem("token");
   try {
@@ -644,12 +704,7 @@ async function rSpin() {
     });
     const data = await res.json();
 
-    // let the wheel visibly spin a moment regardless, for feel
-    await new Promise(r => setTimeout(r, 1400));
-    wheel.classList.remove("spinning");
-
     if (!res.ok) {
-      badge.textContent = "!";
       out.className = "roulette-outcome roulette-lose";
       out.textContent = data.message || "Spin failed.";
       out.classList.remove("hidden");
@@ -658,27 +713,43 @@ async function rSpin() {
       return;
     }
 
-    // show the SERVER's result
+    // ── Polished landing spin: rotate several full turns, then settle so the
+    //    pointer sits over the ACTUAL result band. Longer, eased, with ticks. ──
+    const SPIN_MS = 3400;
+    const turns = 5 + Math.floor(Math.random() * 2);          // 5–6 full turns
+    const land = rLandingAngle(data.result);
+    // pointer is at top (0deg). We rotate the wheel so `land` ends up at top:
+    // final rotation = whole turns + (360 - land) to bring that band under the pointer.
+    const prev = rState._rot || 0;
+    const target = prev + turns * 360 + (360 - land) - (prev % 360);
+    rState._rot = target;
+
+    wheel.style.transition = `transform ${SPIN_MS}ms cubic-bezier(.12,.62,.12,1)`;
+    wheel.style.transform = `rotate(${target}deg)`;
+    rPlaySpinTicks(SPIN_MS);
+
+    await new Promise(r => setTimeout(r, SPIN_MS + 120));
+
+    // reveal result in the centre badge
     badge.textContent = data.result.toUpperCase();
     badge.classList.add(`result-${data.result}`);
 
     if (data.won) {
+      rPlayWin();
       out.className = "roulette-outcome roulette-win";
       out.innerHTML = `🎉 <strong>${data.result.toUpperCase()}</strong> — you won <strong>${data.payout.toLocaleString()}</strong> pts (net +${data.net.toLocaleString()})`;
     } else {
+      rPlayLose();
       out.className = "roulette-outcome roulette-lose";
       out.innerHTML = `Landed <strong>${data.result.toUpperCase()}</strong> — lost ${rState.amount.toLocaleString()} pts. Try again!`;
     }
     out.classList.remove("hidden");
 
-    // sync authoritative balance from server
     if (typeof data.newBalance === "number") {
       lastKnownPoints = data.newBalance;
       setPointsDisplay(lastKnownPoints);
     }
 
-    // reset controls for next spin, but keep the chosen colour
-    const keepColor = rState.color;
     rState.spinning = false;
     rState.amount = 0;
     const slider = document.getElementById("rSlider");
@@ -689,7 +760,6 @@ async function rSpin() {
     document.getElementById("rStakeVal").textContent = "0 pts";
     rUpdateSpinBtn();
   } catch (e) {
-    wheel.classList.remove("spinning");
     out.className = "roulette-outcome roulette-lose";
     out.textContent = "Network error — your balance was not charged.";
     out.classList.remove("hidden");
@@ -1700,7 +1770,7 @@ async function showUserHistory(username) {
       return;
     }
 
-    const { user, history } = data;
+    const { user, history, roulette } = data;
     title.innerText = `${user.username}'s Bet History`;
 
     // Stats summary — use the server-computed outcome (correct per market type).
@@ -1734,6 +1804,15 @@ async function showUserHistory(username) {
       ? ((totalReturned - totalSettledStake) / totalSettledStake * 100).toFixed(1)
       : null;
 
+    // Roulette P&L line — shown publicly so everyone can see anyone's wheel record.
+    let rouletteLine = "";
+    if (roulette && roulette.spins > 0) {
+      const rnet = Number(roulette.net) || 0;
+      const rcolor = rnet > 0 ? "#22c55e" : (rnet < 0 ? "#ef4444" : "#aaa");
+      const rsign = rnet > 0 ? "+" : "";
+      rouletteLine = `<span style="color:${rcolor}">🎰 Roulette ${rsign}${rnet.toLocaleString()} (${roulette.spins} spin${roulette.spins === 1 ? "" : "s"})</span>`;
+    }
+
     statBox.innerHTML = `
       <div class="user-history-summary">
         <span>✅ ${wins} correct</span>
@@ -1742,10 +1821,11 @@ async function showUserHistory(username) {
         <span style="color:${roiVal !== null ? (parseFloat(roiVal) >= 0 ? '#22c55e' : '#ef4444') : '#aaa'}">💹 ROI ${roiVal !== null ? (parseFloat(roiVal) >= 0 ? '+' : '') + roiVal + '%' : '—'}</span>
         <span>🎯 ${rate}% accuracy</span>
         <span>💰 ${Number(user.points).toLocaleString()} pts</span>
+        ${rouletteLine}
       </div>
     `;
 
-    if (history.length === 0) {
+    if (history.length === 0 && (!roulette || roulette.spins === 0)) {
       listBox.innerHTML = "<p>No settled bets yet.</p>";
       return;
     }
