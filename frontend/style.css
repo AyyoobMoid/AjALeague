@@ -2621,3 +2621,101 @@ button:hover::after {
 .abet-leg-stake { color: #aaa; font-size: 0.79rem; white-space: nowrap; }
 .abet-leg-win { color: #4ade80; font-weight: 600; white-space: nowrap; }
 .abet-leg-win .abet-profit { color: #4ade80; font-weight: 400; font-size: 0.76rem; opacity: 0.8; }
+
+/* ─── ROULETTE MINI-GAME ─────────────────────────────────────────── */
+.roulette-wrap { max-width: 460px; margin: 0 auto; }
+
+.roulette-wheel {
+  position: relative;
+  width: 180px; height: 180px;
+  margin: 10px auto 22px;
+  border-radius: 50%;
+  background:
+    conic-gradient(
+      #e23b3b 0deg 40deg, #0d0d0d 40deg 80deg,
+      #e23b3b 80deg 120deg, #0d0d0d 120deg 160deg,
+      #1e9e5a 160deg 200deg,
+      #e23b3b 200deg 240deg, #0d0d0d 240deg 280deg,
+      #e23b3b 280deg 320deg, #0d0d0d 320deg 360deg);
+  border: 6px solid #ffd600;
+  box-shadow: 0 0 0 3px rgba(0,0,0,.5), 0 10px 30px -8px rgba(255,214,0,.4);
+  display: flex; align-items: center; justify-content: center;
+  transition: transform 1.4s cubic-bezier(.17,.67,.2,1);
+}
+.roulette-wheel.spinning { transform: rotate(1440deg); }
+.roulette-pointer {
+  position: absolute; top: -20px; left: 50%; transform: translateX(-50%);
+  color: #ffd600; font-size: 22px; z-index: 3;
+  filter: drop-shadow(0 2px 2px rgba(0,0,0,.6));
+}
+.roulette-result {
+  width: 78px; height: 78px; border-radius: 50%;
+  background: #12100a; border: 2px solid rgba(255,255,255,.15);
+  display: flex; align-items: center; justify-content: center;
+  font-family: 'Archivo Black', sans-serif; font-weight: 800;
+  font-size: 14px; color: #fff; letter-spacing: .02em;
+}
+.roulette-result.result-red   { background:#e23b3b; color:#fff; }
+.roulette-result.result-black { background:#0d0d0d; color:#fff; border-color:#333; }
+.roulette-result.result-green { background:#1e9e5a; color:#fff; }
+
+.roulette-colors { display: flex; gap: 10px; margin-bottom: 18px; }
+.rcolor {
+  flex: 1; padding: 14px 0; border-radius: 10px; cursor: pointer;
+  font-family: 'Space Grotesk', sans-serif; font-weight: 700; font-size: 15px;
+  color: #fff; border: 2px solid transparent; position: relative;
+  display: flex; flex-direction: column; align-items: center; gap: 3px;
+  transition: transform .1s ease, box-shadow .15s ease;
+}
+.rcolor span { font-size: 11px; opacity: .85; font-weight: 600; }
+.rcolor-red   { background:#e23b3b; }
+.rcolor-black { background:#1a1a1a; border-color:#333; }
+.rcolor-green { background:#1e9e5a; }
+.rcolor:hover { transform: translateY(-2px); }
+.rcolor-active { border-color:#ffd600; box-shadow: 0 0 0 3px rgba(255,214,0,.35); transform: translateY(-2px); }
+
+.roulette-stake { margin-bottom: 16px; }
+.rstake-top { display:flex; justify-content:space-between; align-items:baseline; margin-bottom:2px; }
+.rstake-label { font-size:.78rem; color:#999; text-transform:uppercase; letter-spacing:.04em; }
+.rstake-val { font-size:1.05rem; font-weight:700; color:#ffd600; }
+.roulette-slider {
+  -webkit-appearance:none; appearance:none; width:100%; height:8px; border-radius:6px;
+  background:rgba(255,255,255,.14); outline:none; margin:10px 0 12px; cursor:pointer; display:block;
+}
+.roulette-slider::-webkit-slider-thumb {
+  -webkit-appearance:none; width:24px; height:24px; border-radius:50%; background:#ffd600;
+  border:2px solid rgba(10,10,10,.55); box-shadow:0 0 0 4px rgba(255,214,0,.18),0 1px 3px rgba(0,0,0,.45); margin-top:-8px;
+}
+.roulette-slider::-webkit-slider-runnable-track { height:8px; border-radius:6px; background:transparent; }
+.roulette-slider::-moz-range-thumb { width:24px; height:24px; border-radius:50%; background:#ffd600; border:2px solid rgba(10,10,10,.55); }
+.roulette-slider::-moz-range-track { height:8px; border-radius:6px; background:transparent; }
+.rstake-row { display:flex; align-items:stretch; gap:8px; flex-wrap:wrap; }
+.rstake-amount {
+  flex:1 1 100%; min-width:0; padding:12px; border-radius:8px;
+  border:1px solid rgba(255,255,255,.15); background:rgba(0,0,0,.3); color:#fff;
+  font-size:1.05rem; font-weight:600; box-sizing:border-box; -moz-appearance:textfield;
+  text-align:center;
+}
+.rstake-amount::-webkit-outer-spin-button, .rstake-amount::-webkit-inner-spin-button { -webkit-appearance:none; margin:0; }
+.rquick-row { flex:1 1 100%; display:flex; gap:8px; }
+.rquick {
+  flex:1 1 0; height:46px; padding:0; border-radius:8px; border:1px solid rgba(255,214,0,.4);
+  background:rgba(255,214,0,.1); color:#ffd600; font-size:.9rem; font-weight:700; cursor:pointer;
+  touch-action:manipulation; -webkit-tap-highlight-color:transparent;
+}
+.rquick:hover { background:rgba(255,214,0,.2); }
+.rquick:active { background:rgba(255,214,0,.32); }
+.rquick-clear {
+  flex:0 0 46px; border-color:rgba(255,255,255,.25); color:#bbb; background:rgba(255,255,255,.06);
+}
+.rquick-clear:hover { background:rgba(255,255,255,.12); }
+
+.roulette-spin-btn { width:100%; margin-top:4px; }
+.roulette-outcome {
+  margin-top:14px; padding:12px 14px; border-radius:10px; text-align:center;
+  font-size:15px; line-height:1.5;
+}
+.roulette-outcome.hidden { display:none; }
+.roulette-win  { background:rgba(30,158,90,.15); border:1px solid rgba(30,158,90,.5); color:#4ade80; }
+.roulette-win strong { color:#4ade80; }
+.roulette-lose { background:rgba(226,59,59,.12); border:1px solid rgba(226,59,59,.4); color:#fca5a5; }

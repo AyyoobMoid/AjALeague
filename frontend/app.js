@@ -515,6 +515,189 @@ function showMatchesSection() {
   section.scrollIntoView({ behavior: "smooth" });
 }
 
+// ─── ROULETTE MINI-GAME (frontend) ──────────────────────────────────────────
+// All the money logic lives on the server (/api/roulette/spin). This UI only
+// collects a colour + stake, plays the spin animation, then shows the result
+// the SERVER returns — it never decides win/lose itself.
+let rState = { color: null, amount: 0, spinning: false };
+
+function showRouletteSection() {
+  hideAllDashboardSections();
+  const section = document.getElementById("rouletteSection");
+  section.classList.remove("hidden");
+  rResetControls();
+  section.scrollIntoView({ behavior: "smooth" });
+}
+
+function rResetControls() {
+  rState = { color: null, amount: 0, spinning: false };
+  const bal = (typeof lastKnownPoints === 'number' && lastKnownPoints > 0)
+    ? Math.floor(lastKnownPoints / 5) * 5 : 0;
+  const slider = document.getElementById("rSlider");
+  const amt = document.getElementById("rAmount");
+  if (slider) { slider.max = bal; slider.value = 0; rPaintSlider(slider); }
+  if (amt) amt.value = "";
+  document.querySelectorAll(".rcolor").forEach(b => b.classList.remove("rcolor-active"));
+  const out = document.getElementById("rOutcome");
+  if (out) out.classList.add("hidden");
+  document.getElementById("rStakeVal").textContent = "0 pts";
+  rUpdateSpinBtn();
+}
+
+function rPaintSlider(slider) {
+  const max = parseFloat(slider.max) || 0;
+  const pct = max > 0 ? (parseFloat(slider.value) / max) * 100 : 0;
+  slider.style.background =
+    `linear-gradient(to right, #ffd600 0%, #ffd600 ${pct}%, rgba(255,255,255,0.14) ${pct}%, rgba(255,255,255,0.14) 100%)`;
+}
+
+function rSnap(raw, max) {
+  let v = Math.round((parseFloat(raw) || 0) / 5) * 5;
+  if (v < 0) v = 0;
+  const m = Math.floor((max || 0) / 5) * 5;
+  if (v > m) v = m;
+  return v;
+}
+
+function rSelectColor(color, btn) {
+  if (rState.spinning) return;
+  rState.color = color;
+  document.querySelectorAll(".rcolor").forEach(b => b.classList.remove("rcolor-active"));
+  btn.classList.add("rcolor-active");
+  rUpdateSpinBtn();
+}
+
+function rSlide(v) {
+  const slider = document.getElementById("rSlider");
+  rPaintSlider(slider);
+  const max = parseFloat(slider.max) || 0;
+  const val = rSnap(v, max);
+  rState.amount = val;
+  document.getElementById("rAmount").value = val === 0 ? "" : val;
+  document.getElementById("rStakeVal").textContent = `${val.toLocaleString()} pts`;
+  rUpdateSpinBtn();
+}
+
+function rType(v) {
+  const slider = document.getElementById("rSlider");
+  const max = parseFloat(slider.max) || 0;
+  const val = rSnap(v, max);
+  rState.amount = val;
+  slider.value = val;
+  rPaintSlider(slider);
+  document.getElementById("rStakeVal").textContent = `${val.toLocaleString()} pts`;
+  rUpdateSpinBtn();
+}
+
+function rAdd(inc) {
+  const slider = document.getElementById("rSlider");
+  const max = parseFloat(slider.max) || 0;
+  const val = rSnap(rState.amount + inc, max);
+  rState.amount = val;
+  slider.value = val;
+  rPaintSlider(slider);
+  document.getElementById("rAmount").value = val === 0 ? "" : val;
+  document.getElementById("rStakeVal").textContent = `${val.toLocaleString()} pts`;
+  rUpdateSpinBtn();
+}
+
+function rClear() {
+  const slider = document.getElementById("rSlider");
+  rState.amount = 0;
+  slider.value = 0;
+  rPaintSlider(slider);
+  document.getElementById("rAmount").value = "";
+  document.getElementById("rStakeVal").textContent = "0 pts";
+  rUpdateSpinBtn();
+}
+
+function rUpdateSpinBtn() {
+  const btn = document.getElementById("rSpinBtn");
+  if (!btn) return;
+  if (rState.spinning) { btn.disabled = true; btn.textContent = "Spinning…"; return; }
+  if (!rState.color) { btn.disabled = true; btn.textContent = "Pick a colour"; return; }
+  if (rState.amount < 5) { btn.disabled = true; btn.textContent = "Set a stake (min 5)"; return; }
+  btn.disabled = false;
+  btn.textContent = `Spin for ${rState.amount.toLocaleString()} pts`;
+}
+
+async function rSpin() {
+  if (rState.spinning || !rState.color || rState.amount < 5) return;
+  rState.spinning = true;
+  rUpdateSpinBtn();
+  const out = document.getElementById("rOutcome");
+  out.classList.add("hidden");
+
+  // start the visual spin
+  const wheel = document.getElementById("rouletteWheel");
+  wheel.classList.add("spinning");
+  const badge = document.getElementById("rouletteResultBadge");
+  badge.textContent = "…";
+  badge.className = "roulette-result";
+
+  const token = localStorage.getItem("token");
+  try {
+    const res = await fetch(`${API}/roulette/spin`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Authorization": token },
+      body: JSON.stringify({ color: rState.color, amount: rState.amount }),
+    });
+    const data = await res.json();
+
+    // let the wheel visibly spin a moment regardless, for feel
+    await new Promise(r => setTimeout(r, 1400));
+    wheel.classList.remove("spinning");
+
+    if (!res.ok) {
+      badge.textContent = "!";
+      out.className = "roulette-outcome roulette-lose";
+      out.textContent = data.message || "Spin failed.";
+      out.classList.remove("hidden");
+      rState.spinning = false;
+      rUpdateSpinBtn();
+      return;
+    }
+
+    // show the SERVER's result
+    badge.textContent = data.result.toUpperCase();
+    badge.classList.add(`result-${data.result}`);
+
+    if (data.won) {
+      out.className = "roulette-outcome roulette-win";
+      out.innerHTML = `🎉 <strong>${data.result.toUpperCase()}</strong> — you won <strong>${data.payout.toLocaleString()}</strong> pts (net +${data.net.toLocaleString()})`;
+    } else {
+      out.className = "roulette-outcome roulette-lose";
+      out.innerHTML = `Landed <strong>${data.result.toUpperCase()}</strong> — lost ${rState.amount.toLocaleString()} pts. Try again!`;
+    }
+    out.classList.remove("hidden");
+
+    // sync authoritative balance from server
+    if (typeof data.newBalance === "number") {
+      lastKnownPoints = data.newBalance;
+      setPointsDisplay(lastKnownPoints);
+    }
+
+    // reset controls for next spin, but keep the chosen colour
+    const keepColor = rState.color;
+    rState.spinning = false;
+    rState.amount = 0;
+    const slider = document.getElementById("rSlider");
+    const bal = (typeof lastKnownPoints === 'number' && lastKnownPoints > 0)
+      ? Math.floor(lastKnownPoints / 5) * 5 : 0;
+    slider.max = bal; slider.value = 0; rPaintSlider(slider);
+    document.getElementById("rAmount").value = "";
+    document.getElementById("rStakeVal").textContent = "0 pts";
+    rUpdateSpinBtn();
+  } catch (e) {
+    wheel.classList.remove("spinning");
+    out.className = "roulette-outcome roulette-lose";
+    out.textContent = "Network error — your balance was not charged.";
+    out.classList.remove("hidden");
+    rState.spinning = false;
+    rUpdateSpinBtn();
+  }
+}
+
 function showNotification(message) {
   const box = document.getElementById("notificationBox");
 
@@ -1444,6 +1627,7 @@ function hideAllDashboardSections() {
   document.getElementById("historySection").classList.add("hidden");
   document.getElementById("activeBetsSection") && document.getElementById("activeBetsSection").classList.add("hidden");
   document.getElementById("statsSection").classList.add("hidden");
+  document.getElementById("rouletteSection") && document.getElementById("rouletteSection").classList.add("hidden");
 }
 
 function showLeaderboardSection() {

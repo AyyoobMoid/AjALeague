@@ -252,6 +252,7 @@
         <button onclick="showHistorySection()">📜 History</button>
         <button onclick="showActiveBetsSection()">🔥 Live Bets</button>
         <button onclick="showStatsSection()">📊 Stats</button>
+        <button onclick="showRouletteSection()">🎰 Roulette</button>
       </div>
     </div>
 
@@ -272,6 +273,46 @@
     <h3>🔥 Live Bets</h3>
     <p class="small-text">All unsettled bets currently placed by players.</p>
     <div id="activeBetsList"></div>
+  </div>
+
+  <div class="dash-card full hidden" id="rouletteSection">
+    <h3>🎰 Roulette</h3>
+    <p class="small-text">Pick a colour, set your stake, and spin. Red or Black pays 2×. Green pays 14×.</p>
+
+    <div class="roulette-wrap">
+      <div class="roulette-wheel" id="rouletteWheel">
+        <div class="roulette-pointer">▼</div>
+        <div class="roulette-result" id="rouletteResultBadge">—</div>
+      </div>
+
+      <div class="roulette-colors">
+        <button type="button" class="rcolor rcolor-red"   data-color="red"   onclick="rSelectColor('red', this)">RED<span>2×</span></button>
+        <button type="button" class="rcolor rcolor-green" data-color="green" onclick="rSelectColor('green', this)">GREEN<span>14×</span></button>
+        <button type="button" class="rcolor rcolor-black" data-color="black" onclick="rSelectColor('black', this)">BLACK<span>2×</span></button>
+      </div>
+
+      <div class="roulette-stake">
+        <div class="rstake-top">
+          <span class="rstake-label">Stake</span>
+          <span class="rstake-val" id="rStakeVal">0 pts</span>
+        </div>
+        <input type="range" class="roulette-slider" id="rSlider" min="0" max="0" step="5" value="0"
+          oninput="rSlide(this.value)">
+        <div class="rstake-row">
+          <input type="number" class="rstake-amount" id="rAmount" placeholder="0" min="0" step="5"
+            oninput="rType(this.value)">
+          <div class="rquick-row">
+            <button type="button" class="rquick" onclick="rAdd(1000)">+1k</button>
+            <button type="button" class="rquick" onclick="rAdd(5000)">+5k</button>
+            <button type="button" class="rquick" onclick="rAdd(10000)">+10k</button>
+            <button type="button" class="rquick rquick-clear" onclick="rClear()">C</button>
+          </div>
+        </div>
+      </div>
+
+      <button class="confirm-btn roulette-spin-btn" id="rSpinBtn" onclick="rSpin()" disabled>Pick a colour</button>
+      <div class="roulette-outcome hidden" id="rOutcome"></div>
+    </div>
   </div>
 
   <div class="dash-card full hidden" id="historySection">
