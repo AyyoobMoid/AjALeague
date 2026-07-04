@@ -779,7 +779,12 @@ async function rSpin() {
     // reveal result in the centre badge
     badge.textContent = data.result.toUpperCase();
     badge.classList.add(`result-${data.result}`);
-    animatePop(badge, { from: 0.5, duration: 380 });
+    // The hub is centered via translate(-50%,-50%); animating its transform with
+    // anime.js would wipe that and pop off-center. Instead animate a CSS var-free
+    // pulse via a class that scales from the center (transform-origin center).
+    badge.classList.remove("hub-pop");
+    void badge.offsetWidth;        // reflow so re-adding the class restarts it
+    badge.classList.add("hub-pop");
 
     if (data.won) {
       rPlayWin();
@@ -791,7 +796,7 @@ async function rSpin() {
       out.innerHTML = `Landed <strong>${data.result.toUpperCase()}</strong> — lost ${rState.amount.toLocaleString()} pts. Try again!`;
     }
     out.classList.remove("hidden");
-    animatePop(out, { from: 0.85, duration: 340 });
+    animatePop(out, { from: 0.9, duration: 300 });
 
     if (typeof data.newBalance === "number") {
       lastKnownPoints = data.newBalance;
@@ -900,8 +905,9 @@ function setPointsDisplay(points) {
     if (!el) return;
     // parse the currently-shown number so we can count from it to the new value
     const from = Number(String(el.innerText).replace(/[^0-9.-]/g, "")) || 0;
+    // Snap instantly if unchanged (avoids needless work on background refreshes).
     if (from === to) { el.innerText = to.toLocaleString(); return; }
-    animateNumber(el, from, to, { duration: 650 });
+    animateNumber(el, from, to, { duration: 500 });
   });
 }
 
@@ -1163,8 +1169,12 @@ async function loadLeaderboard() {
       `;
     });
 
-    // Stagger the rows into view for a bit of life on load.
-    animateStagger(box.querySelectorAll(".leaderboard-item"), { stagger: 45, dy: 14 });
+    // Only animate rows in on the FIRST render or when standings actually changed —
+    // not on every background refresh (that caused repeated jank/lag).
+    if (!window._lbAnimatedOnce || currentFingerprint !== savedFingerprint) {
+      animateStagger(box.querySelectorAll(".leaderboard-item"), { stagger: 35, dy: 10 });
+      window._lbAnimatedOnce = true;
+    }
 
   } catch (error) {
     console.log("Leaderboard failed", error);

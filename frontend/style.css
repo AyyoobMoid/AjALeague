@@ -2667,6 +2667,14 @@ button:hover::after {
 .roulette-hub.result-red   { background:#e23b3b; color:#fff; border-color:#fff; }
 .roulette-hub.result-black { background:#0d0d0d; color:#fff; border-color:#666; }
 .roulette-hub.result-green { background:#1e9e5a; color:#fff; border-color:#fff; }
+/* Pop that KEEPS the centering translate — scale is baked into each keyframe so
+   anime.js never has to touch transform (which would drop the -50%,-50% offset). */
+@keyframes hubPop {
+  0%   { transform: translate(-50%, -50%) scale(0.55); }
+  60%  { transform: translate(-50%, -50%) scale(1.12); }
+  100% { transform: translate(-50%, -50%) scale(1); }
+}
+.roulette-hub.hub-pop { animation: hubPop 380ms cubic-bezier(.2,.8,.2,1); }
 
 .roulette-colors { display: flex; gap: 10px; margin-bottom: 18px; }
 .rcolor {
