@@ -3,6 +3,7 @@ const cors = require("cors");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const path = require("path");
+const crypto = require("crypto");
 const cron = require("node-cron");
 const fetch = require("node-fetch");
 const db = require("./database");
@@ -124,6 +125,134 @@ app.get("/api/me", auth, (req, res) => {
     if (!user) return res.status(401).json({ message: "User no longer exists" });
     if (user.is_active === 0) return res.status(403).json({ message: "Account is disabled" });
     return res.json(user);
+  });
+});
+
+// ─── ROULETTE MINI-GAME ──────────────────────────────────────────────────────
+// Server-authoritative: the spin outcome and payout are decided HERE, never in
+// the browser. The client only sends {color, amount}; it cannot influence the
+// result. Wheel model (European-style single-green odds):
+//   18 red / 18 black / 1 green  = 37 pockets.
+//   Red or Black wins  -> pays 2x stake  (bet 100 -> get 200 back, net +100)
+//   Green wins         -> pays 14x stake (bet 100 -> get 1400 back, net +1300)
+// House edge comes from the single green pocket, exactly like real roulette.
+const ROULETTE = {
+  pockets: 37,               // 18 + 18 + 1
+  redCount: 18,
+  blackCount: 18,
+  greenCount: 1,
+  payout: { red: 2, black: 2, green: 14 },
+  minBet: 5,
+};
+
+// Ledger table for every spin — this is what makes roulette money auditable:
+// each row records who spun, stake, colour, result, payout, and the house's
+// net gain/loss on that spin (stake - payout). The house tab sums house_net.
+db.run(
+  `CREATE TABLE IF NOT EXISTS roulette_spins (
+     id SERIAL PRIMARY KEY,
+     user_id INTEGER NOT NULL,
+     bet INTEGER NOT NULL,
+     pick VARCHAR(10) NOT NULL,
+     result VARCHAR(10) NOT NULL,
+     won BOOLEAN NOT NULL,
+     payout INTEGER NOT NULL,
+     player_net INTEGER NOT NULL,   -- signed: +winnings or -stake (from player's view)
+     house_net INTEGER NOT NULL,    -- signed: +stake kept or -payout (from house's view) = -player_net
+     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+   )`,
+  [],
+  (err) => { if (err) console.log("roulette_spins table init:", err.message); }
+);
+
+// Decide a pocket fairly. Returns 'red' | 'black' | 'green'.
+function spinWheel() {
+  const n = crypto.randomInt(ROULETTE.pockets); // 0..36, cryptographically fair
+  if (n < ROULETTE.redCount) return "red";                       // 0..17
+  if (n < ROULETTE.redCount + ROULETTE.blackCount) return "black"; // 18..35
+  return "green";                                                // 36
+}
+
+app.post("/api/roulette/spin", auth, (req, res) => {
+  const { color, amount } = req.body || {};
+  const bet = Math.floor(Number(amount));
+  const pick = String(color || "").toLowerCase();
+
+  // ── validate input ──
+  if (!["red", "black", "green"].includes(pick)) {
+    return res.status(400).json({ message: "Pick red, black, or green." });
+  }
+  if (!Number.isFinite(bet) || bet < ROULETTE.minBet) {
+    return res.status(400).json({ message: `Minimum bet is ${ROULETTE.minBet} points.` });
+  }
+  if (bet % 5 !== 0) {
+    return res.status(400).json({ message: "Bet must be a multiple of 5." });
+  }
+
+  // ── check balance, then settle in a single guarded update ──
+  db.get("SELECT points, is_active FROM users WHERE id = ?", [req.user.id], (err, user) => {
+    if (err) return res.status(500).json({ message: "Server error" });
+    if (!user) return res.status(401).json({ message: "User no longer exists" });
+    if (user.is_active === 0) return res.status(403).json({ message: "Account is disabled" });
+    if (user.points < bet) return res.status(400).json({ message: "Not enough points." });
+
+    // Decide outcome server-side.
+    const result = spinWheel();
+    const won = result === pick;
+    const payout = won ? bet * ROULETTE.payout[pick] : 0; // total returned (incl. stake)
+    const net = payout - bet;                              // signed change to balance
+
+    // Guard: only apply if the balance still covers the stake (defends against
+    // a race where two spins fire at once). points >= bet in the WHERE clause
+    // makes the deduction refuse to go negative.
+    db.run(
+      "UPDATE users SET points = points + ? WHERE id = ? AND points >= ?",
+      [net, req.user.id, bet],
+      function (uErr) {
+        if (uErr) return res.status(500).json({ message: "Could not settle spin" });
+        if (this.changes === 0) {
+          // balance changed underneath us; treat as insufficient funds
+          return res.status(400).json({ message: "Not enough points." });
+        }
+
+        // Record the spin in the ledger. player_net is the signed change to the
+        // player's balance; house_net is its exact inverse (what the house made
+        // or lost on this spin). This is what the house tab reads.
+        const houseNet = -net;
+        db.run(
+          `INSERT INTO roulette_spins (user_id, bet, pick, result, won, payout, player_net, house_net)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+          [req.user.id, bet, pick, result, won, payout, net, houseNet],
+          (lErr) => {
+            // A ledger failure shouldn't rob the player of their already-applied
+            // result, but we do want to know about it.
+            if (lErr) console.log("roulette ledger insert failed:", lErr.message);
+
+            db.get("SELECT points FROM users WHERE id = ?", [req.user.id], (bErr, fresh) => {
+              const newBalance = fresh ? fresh.points : null;
+              return res.json({
+                result,        // 'red' | 'black' | 'green' — what the wheel landed on
+                pick,          // what the player chose
+                won,
+                bet,
+                payout,        // total points returned (0 if lost)
+                net,           // signed change (+winnings or -stake)
+                multiplier: ROULETTE.payout[pick],
+                newBalance,    // authoritative balance after settling
+              });
+            });
+          }
+        );
+      }
+    );
+  });
+});
+
+// Roulette house profit + per-player roulette P&L, read from the spin ledger.
+app.get("/api/roulette/house", (req, res) => {
+  db.get("SELECT COALESCE(SUM(house_net),0) AS house_net, COUNT(*) AS spins FROM roulette_spins", [], (err, row) => {
+    if (err) return res.status(500).json({ message: "Could not load roulette house total" });
+    res.json({ rouletteHouseNet: row.house_net, totalSpins: row.spins });
   });
 });
 
@@ -1510,7 +1639,16 @@ app.get("/api/house-total", (req, res) => {
         houseTotal += p.points_used - o.payout;
       });
 
-      res.json({ houseTotal });
+      // Add roulette house profit (sum of house_net across all spins) so the
+      // house tab reflects BOTH prediction margin and roulette margin.
+      db.get("SELECT COALESCE(SUM(house_net),0) AS roulette_net FROM roulette_spins", [], (rErr, rRow) => {
+        const rouletteNet = (rErr || !rRow) ? 0 : rRow.roulette_net;
+        res.json({
+          houseTotal: houseTotal + rouletteNet,
+          predictionHouse: houseTotal,
+          rouletteHouse: rouletteNet,
+        });
+      });
     }
   );
 });
