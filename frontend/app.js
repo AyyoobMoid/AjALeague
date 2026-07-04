@@ -15,6 +15,52 @@ function showSkeleton(boxId, count=3) {
 
 const API = "/api";
 
+// ── Animation helpers (anime.js) ──────────────────────────────────────────────
+// All wrapped so the app never breaks if the CDN is blocked — if `anime` isn't
+// loaded, these fall back to instant/no-op behaviour.
+const hasAnime = () => typeof anime === "function";
+
+// Count a number element up/down to a new value (used for balance changes).
+function animateNumber(el, from, to, opts = {}) {
+  if (!el) return;
+  const fmt = opts.format || ((n) => Math.round(n).toLocaleString());
+  if (!hasAnime()) { el.textContent = fmt(to); return; }
+  const state = { v: from };
+  anime({
+    targets: state,
+    v: to,
+    round: 1,
+    duration: opts.duration || 700,
+    easing: opts.easing || "easeOutCubic",
+    update: () => { el.textContent = fmt(state.v); },
+  });
+}
+
+// Pop an element in (scale + fade) — used for reveals like win badges.
+function animatePop(el, opts = {}) {
+  if (!el || !hasAnime()) return;
+  anime({
+    targets: el,
+    scale: [opts.from || 0.6, 1],
+    opacity: [0, 1],
+    duration: opts.duration || 420,
+    easing: opts.easing || "easeOutBack",
+  });
+}
+
+// Stagger a list of children into view (used for leaderboard / lists).
+function animateStagger(els, opts = {}) {
+  if (!els || !els.length || !hasAnime()) return;
+  anime({
+    targets: els,
+    translateY: [opts.dy != null ? opts.dy : 12, 0],
+    opacity: [0, 1],
+    delay: anime.stagger(opts.stagger || 40),
+    duration: opts.duration || 420,
+    easing: "easeOutCubic",
+  });
+}
+
 // Returns true if a match's stage is a knockout round (two-way "to advance"
 // market, no Draw button). Mirrors the backend isKnockoutStage().
 function isKnockout(stage) {
@@ -733,6 +779,7 @@ async function rSpin() {
     // reveal result in the centre badge
     badge.textContent = data.result.toUpperCase();
     badge.classList.add(`result-${data.result}`);
+    animatePop(badge, { from: 0.5, duration: 380 });
 
     if (data.won) {
       rPlayWin();
@@ -744,6 +791,7 @@ async function rSpin() {
       out.innerHTML = `Landed <strong>${data.result.toUpperCase()}</strong> — lost ${rState.amount.toLocaleString()} pts. Try again!`;
     }
     out.classList.remove("hidden");
+    animatePop(out, { from: 0.85, duration: 340 });
 
     if (typeof data.newBalance === "number") {
       lastKnownPoints = data.newBalance;
@@ -846,10 +894,15 @@ function setPointsDisplay(points) {
   // Updates only the points NUMBER, not the rank tier.
   // Rank is based on net worth (cash + staked), which doesn't change when betting —
   // money just moves from cash to stake. Rank refreshes when the leaderboard reloads.
-  const fmtPoints = Number(points).toLocaleString();
-  const setEl = (id, val) => { const el = document.getElementById(id); if (el) el.innerText = val; };
-  setEl("dashboardPoints", fmtPoints);
-  setEl("heroPoints", fmtPoints);
+  const to = Number(points) || 0;
+  ["dashboardPoints", "heroPoints"].forEach((id) => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    // parse the currently-shown number so we can count from it to the new value
+    const from = Number(String(el.innerText).replace(/[^0-9.-]/g, "")) || 0;
+    if (from === to) { el.innerText = to.toLocaleString(); return; }
+    animateNumber(el, from, to, { duration: 650 });
+  });
 }
 
 function getDeviceId() {
@@ -1109,6 +1162,9 @@ async function loadLeaderboard() {
         </div>
       `;
     });
+
+    // Stagger the rows into view for a bit of life on load.
+    animateStagger(box.querySelectorAll(".leaderboard-item"), { stagger: 45, dy: 14 });
 
   } catch (error) {
     console.log("Leaderboard failed", error);
