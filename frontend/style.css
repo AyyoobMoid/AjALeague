@@ -2719,3 +2719,33 @@ button:hover::after {
 .roulette-win  { background:rgba(30,158,90,.15); border:1px solid rgba(30,158,90,.5); color:#4ade80; }
 .roulette-win strong { color:#4ade80; }
 .roulette-lose { background:rgba(226,59,59,.12); border:1px solid rgba(226,59,59,.4); color:#fca5a5; }
+
+/* ─── HOUSE BREAKDOWN (leaderboard) ──────────────────────────────── */
+.house-breakdown {
+  display: flex; flex-wrap: wrap; gap: 4px 12px; margin-top: 4px;
+}
+.house-src {
+  font-size: 11px; color: #9a9a9a; white-space: nowrap;
+}
+.house-src b { font-weight: 700; }
+.house-src b.pos { color: #4ade80; }
+.house-src b.neg { color: #fca5a5; }
+
+/* ─── ROULETTE P&L CARD (history) ────────────────────────────────── */
+.roulette-pnl-card {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  padding: 14px 16px; margin-bottom: 14px; border-radius: 12px;
+  background: rgba(255,255,255,.03); border: 1px solid rgba(255,214,0,.25);
+}
+.rpnl-left { display: flex; align-items: center; gap: 12px; }
+.rpnl-icon { font-size: 26px; }
+.rpnl-title { font-weight: 700; font-size: 15px; color: #ffd600; }
+.rpnl-sub { font-size: 12px; color: #999; margin-top: 2px; }
+.rpnl-net { text-align: right; }
+.rpnl-amount { font-family: 'Archivo Black', sans-serif; font-size: 22px; line-height: 1; }
+.rpnl-label { font-size: 11px; color: #999; text-transform: uppercase; letter-spacing: .04em; margin-top: 4px; }
+.roulette-up   { border-color: rgba(74,222,128,.4); }
+.roulette-up   .rpnl-amount { color: #4ade80; }
+.roulette-down { border-color: rgba(226,59,59,.4); }
+.roulette-down .rpnl-amount { color: #fca5a5; }
+.roulette-even .rpnl-amount { color: #ddd; }

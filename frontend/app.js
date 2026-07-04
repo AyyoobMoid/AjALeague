@@ -931,15 +931,23 @@ async function loadLeaderboard() {
       return;
     }
 
-    // Pin house entry at top
-    const houseTotal = houseData.houseTotal || 0;
+    // Pin house entry at top. Coerce to Number — the API value can arrive as a
+    // string, and .toLocaleString() on a string like "135796-1495" would print junk.
+    const houseTotal = Number(houseData.houseTotal) || 0;
     const houseSign = houseTotal >= 0 ? "+" : "";
+    const predHouse = Number(houseData.predictionHouse) || 0;
+    const rouletteHouse = Number(houseData.rouletteHouse) || 0;
+    const fmtSigned = (n) => `${n >= 0 ? "+" : ""}${n.toLocaleString()}`;
     box.innerHTML += `
       <div class="leaderboard-item house-entry">
         <span class="leader-badge">🏦</span>
         <div class="leader-info">
           <strong>The AJA House</strong>
           <small>Always watching</small>
+          <div class="house-breakdown">
+            <span class="house-src">⚽ Wagers <b class="${predHouse >= 0 ? 'pos' : 'neg'}">${fmtSigned(predHouse)}</b></span>
+            <span class="house-src">🎰 Roulette <b class="${rouletteHouse >= 0 ? 'pos' : 'neg'}">${fmtSigned(rouletteHouse)}</b></span>
+          </div>
         </div>
         <div class="leader-points house-points">
           ${houseSign}${houseTotal.toLocaleString()}
@@ -1317,19 +1325,45 @@ async function loadPredictionHistory() {
   const token = localStorage.getItem("token");
 
   try {
-    const res = await fetch(`${API}/my-predictions`, {
-      headers: {
-        "Authorization": token
-      }
-    });
+    // Fetch prediction history and the player's roulette P&L in parallel.
+    const [res, rStatsRes] = await Promise.all([
+      fetch(`${API}/my-predictions`, { headers: { "Authorization": token } }),
+      fetch(`${API}/roulette/my-stats`, { headers: { "Authorization": token } })
+    ]);
 
     const data = await res.json();
     const box = document.getElementById("predictionHistory");
 
     box.innerHTML = "";
 
+    // Roulette P&L card — only shown once the player has actually spun.
+    try {
+      const rs = await rStatsRes.json();
+      if (rs && rs.spins > 0) {
+        const net = Number(rs.net) || 0;
+        const cls = net > 0 ? "roulette-up" : (net < 0 ? "roulette-down" : "roulette-even");
+        const sign = net > 0 ? "+" : "";
+        const verb = net > 0 ? "up" : (net < 0 ? "down" : "even");
+        box.innerHTML += `
+          <div class="roulette-pnl-card ${cls}">
+            <div class="rpnl-left">
+              <span class="rpnl-icon">🎰</span>
+              <div>
+                <div class="rpnl-title">Roulette</div>
+                <div class="rpnl-sub">${rs.spins} spin${rs.spins === 1 ? "" : "s"} · ${rs.wins} won · ${rs.wagered.toLocaleString()} wagered</div>
+              </div>
+            </div>
+            <div class="rpnl-net">
+              <div class="rpnl-amount">${sign}${net.toLocaleString()}</div>
+              <div class="rpnl-label">pts ${verb}</div>
+            </div>
+          </div>
+        `;
+      }
+    } catch (e) { /* roulette stats are non-critical; skip card on error */ }
+
     if (!data || data.length === 0) {
-      box.innerHTML = "<p>No predictions yet.</p>";
+      box.innerHTML += "<p>No predictions yet.</p>";
       return;
     }
 
