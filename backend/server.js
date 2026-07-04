@@ -433,7 +433,27 @@ app.get("/api/user-history/:username", auth, (req, res) => {
           const o = settledOutcome(r);
           return { ...r, won: o.won, payout: o.payout, profit: o.profit };
         });
-        return res.json({ user: { username: user.username, fullName: user.full_name, points: user.points }, history });
+        // Include this user's roulette P&L so it's visible on their PUBLIC
+        // history to everyone, not just themselves.
+        db.get(
+          `SELECT COALESCE(SUM(player_net),0) AS net, COALESCE(SUM(bet),0) AS wagered,
+                  COUNT(*) AS spins, COALESCE(SUM(CASE WHEN won THEN 1 ELSE 0 END),0) AS wins
+           FROM roulette_spins WHERE user_id = ?`,
+          [user.id],
+          (rErr, rStats) => {
+            const roulette = (rErr || !rStats) ? null : {
+              net: Number(rStats.net) || 0,
+              wagered: Number(rStats.wagered) || 0,
+              spins: Number(rStats.spins) || 0,
+              wins: Number(rStats.wins) || 0,
+            };
+            return res.json({
+              user: { username: user.username, fullName: user.full_name, points: user.points },
+              history,
+              roulette,
+            });
+          }
+        );
       }
     );
   });
