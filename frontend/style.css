@@ -2543,15 +2543,23 @@ input[type="number"]::-webkit-outer-spin-button { -webkit-appearance: none; marg
 
 /* ═══════════════════════════════════════════════════════════════════════════
    FIX: Cash-eligible badge ($) alignment in leaderboard rows
-   Previously an unstyled inline "$" that hovered between elements.
+   Anchored absolutely to a fixed position — no longer slides with points width.
+   Positioned to the LEFT of where the points would end, aligned vertically
+   with the top row (points number), not floating between rows.
    ═══════════════════════════════════════════════════════════════════════════ */
 
+/* Anchor the badge relative to the row */
+.leaderboard-item { position: relative; }
+
 .cash-badge-slot {
+  position: absolute;
+  top: 14px;              /* aligned with the points number, not the row center */
+  right: 78px;            /* fixed offset — sits left of the points column */
   display: flex;
   align-items: center;
   justify-content: center;
-  flex: 0 0 auto;
-  min-width: 20px;
+  pointer-events: none;   /* let the row's click-through still work */
+  z-index: 2;
 }
 .cash-badge {
   display: inline-flex;
@@ -2568,4 +2576,8 @@ input[type="number"]::-webkit-outer-spin-button { -webkit-appearance: none; marg
   line-height: 1;
   box-shadow: 0 0 0 1px var(--accent-line);
   cursor: help;
+  pointer-events: auto;   /* but hover on the badge itself still works */
 }
+
+/* RTL: mirror to the left edge instead */
+[dir="rtl"] .cash-badge-slot { right: auto; left: 78px; }
