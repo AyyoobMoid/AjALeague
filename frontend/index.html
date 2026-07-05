@@ -1,383 +1,288 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" dir="ltr">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover"/>
+  <meta name="theme-color" content="#0b0b10">
   <title>AJA League</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="style.css"/>
 </head>
 <body>
 
-  <video autoplay muted loop playsinline id="bgVideo">
-    <source src="assets/stadium.mp4" type="video/mp4">
-  </video>
-
   <div class="app">
 
-    <div id="notificationBox" class="notification-box hidden"></div>
+    <div id="notificationBox" class="hidden"></div>
 
-<div id="registerNoticeModal" class="modal-overlay hidden">
-  <div class="modal-card">
-    <h2>Welcome to AJA Prediction League</h2>
+    <!-- Register agreement modal -->
+    <div id="registerNoticeModal" class="modal-overlay hidden">
+      <div class="modal-card auth-card">
+        <h2 data-i18n="agreement.title">Welcome to AJA Prediction League</h2>
+        <p data-i18n="agreement.intro">Before creating your account, please read and accept the following:</p>
+        <ul>
+          <li data-i18n="agreement.bullet.1">This is not a betting platform and has no real-money gambling.</li>
+          <li data-i18n="agreement.bullet.2">Points are only for fun, ranking, and community engagement.</li>
+          <li data-i18n="agreement.bullet.3">By joining, you agree to follow AJA League rules and terms.</li>
+          <li data-i18n="agreement.bullet.4"><strong>AJA League reserves the right to disqualify any participant found engaging in cheating, unfair play, or misuse of the platform. All decisions are final.</strong></li>
+        </ul>
+        <button class="btn-primary" onclick="acceptRegisterNotice()" data-i18n="agreement.accept">I understand and agree</button>
+      </div>
+    </div>
 
-    <p>Before creating your account, please read and accept the following:</p>
-
-    <ul>
-      <li>Welcome to your gateway drug into online gambling.</li>
-      <li>This is not a betting platform and has no real-money gambling.</li>
-      <li>Points are only for fun, ranking, and community engagement.</li>
-      <li>By joining, you agree to follow AJA League rules and terms.</li>
-      <li>⚠️ AJA LEAGUE RESERVES THE RIGHT TO DISQUALIFY any participant found engaging in cheating, unfair play, or misuse of the platform. All decisions made by AJA League are final.</li>
-    </ul>
-
-    <button onclick="acceptRegisterNotice()">I Understand & Agree</button>
-  </div>
-</div>
-
-
-
-
-    <!-- PENDING APPROVAL PAGE -->
+    <!-- Pending approval -->
     <section id="pendingPage" class="page hidden">
+      <div class="auth-brand">
+        <h1><span class="dot"></span>AJA League</h1>
+        <p data-i18n="pending.tag">Waiting for approval</p>
+      </div>
       <div class="auth-card">
-        <div style="text-align:center;padding:2rem 0;">
-          <div style="font-size:3rem;margin-bottom:1rem;">⏳</div>
-          <h2 style="color:#ffd600;margin-bottom:1rem;">Account Pending Approval</h2>
-          <p style="color:#ccc;margin-bottom:1rem;">Your account has been created and is waiting for admin approval.</p>
-          <p style="color:#aaa;font-size:0.9rem;margin-bottom:1.5rem;">Please contact us to get activated:</p>
-          <p style="color:#ffd600;font-size:1.1rem;font-weight:bold;margin-bottom:2rem;">+966 50 347 5147</p>
-          <button onclick="showLogin()">Back to Login</button>
-        </div>
+        <h2 data-i18n="pending.title">Account pending approval</h2>
+        <p data-i18n="pending.body">Your account has been created and is waiting for admin approval.</p>
+        <p style="color:var(--dim);font-size:12px;" data-i18n="pending.contact">Contact us to get activated:</p>
+        <p class="mono" style="color:var(--accent);font-size:16px;font-weight:600;">+966 50 347 5147</p>
+        <button onclick="showLogin()" data-i18n="pending.back">Back to login</button>
       </div>
     </section>
 
-    <!-- LOGIN PAGE -->
+    <!-- LOGIN -->
     <section id="loginPage" class="page">
-<div class="auth-card">
-
-  <img
-    src="assets/logoo.png"
-    class="yugo-logo"
-    alt="AJA Logo"
-  >
-
-  <h1>⚽ AJA League</h1>
-        <h2>Login Details</h2>
-
-        <input type="text" id="loginUsername" placeholder="Display name">
-        <input type="password" id="loginPassword" placeholder="Password">
-
-        <button onclick="login()">Login</button>
-
-        <p class="switch-text">
-          Don’t have an account?
-          <span onclick="showRegister()">Register here</span>
-        </p>
-<p class="forgot-password-note">
-🔒 Password recovery is currently unavailable. Please keep your password safe. If you forget it, you will need to create a new account.
-<br><br>
-📞 Questions? Contact +966 50 347 5147
-</p>
+      <div class="auth-brand">
+        <h1><span class="dot"></span>AJA League</h1>
+        <p data-i18n="login.tag">Predict. Compete. Climb the board.</p>
       </div>
-    </section>
-
-    <!-- REGISTER PAGE -->
-    <section id="registerPage" class="page hidden">
-<div class="auth-card">
-
-  <img
-    src="assets/logoo.png"
-    class="yugo-logo"
-    alt="AJA Logo"
-  >
-
-  <h1>⚽ AJA League</h1>
-        <h2>Create Account</h2>
-
-<input type="text" id="registerUsername" placeholder="Display name (shown to others)" oninput="this.value=this.value.replace(/[^A-Za-z0-9_.-]/g,'')">
-<small class="field-hint">This is the name everyone sees on the leaderboard</small>
-
-<input type="password" id="registerPassword" placeholder="Choose password">
-
-<div class="name-row">
-  <input type="text" id="registerFirstName" placeholder="First name" oninput="this.value=this.value.replace(/[^A-Za-z0-9_.-]/g,'')">
-  <input type="text" id="registerLastName" placeholder="Last name" oninput="this.value=this.value.replace(/[^A-Za-z0-9_.-]/g,'')">
-</div>
-<small class="field-hint">Your real name — only visible to the admin</small>
-
-        <button onclick="register()">Register</button>
-
-        <p class="switch-text">
-          Already have an account?
-          <span onclick="showLogin()">Back to login</span>
-        </p>
-      </div>
-    </section>
-
-   <!-- DASHBOARD PAGE -->
-<section id="dashboardPage" class="page hidden">
-
-  <div class="topbar">
-    <div class="brand-title">
-      <img src="assets/logoo.png" class="topbar-logo" alt="AJA Logo">
-      <h2>AJA League</h2>
-    </div>
-
-    <button class="logout-btn" onclick="logout()">Logout</button>
-  </div>
-
-   <div class="live-ticker">
-    <div class="ticker-track">
-      <span>
-      🏆 Welcome to AJA League •
-      ⚽ Prediction closes 5 minutes before kickoff •
-      🎯 Predict wisely and climb the leaderboard •
-      🚫 This is not a betting platform •
-      🔥 Live leaderboard updates after every settled match •
-</span>
-<span>
-      🏆 Welcome to AJA League •
-      ⚽ Prediction closes 5 minutes before kickoff •
-      🎯 Predict wisely and climb the leaderboard •
-      🚫 This is not a betting platform •
-      🔥 Live leaderboard updates after every settled match •
-</span>
-    </div>
-  </div>
-
-<div class="hero-banner">
-  <div class="hero-left">
-    <h1>Welcome back, <span id="heroUsername">Player</span></h1>
-    <p>Your current rank is <strong id="heroRank">Rookie ⚪</strong></p>
-  </div>
-
-<div class="points-rules-box">
-  <h3>⚽ How It Works</h3>
-
-  <div class="rules-section">
-    <p class="rules-line">🎁 Everyone starts with <strong class="green-text">100,000 points</strong></p>
-    <p class="rules-line">✅ Win your pick → <strong class="green-text">Stake × Odds</strong></p>
-    <p class="rules-line">❌ Lose your pick → <strong class="red-text">lose your stake</strong></p>
-    <p class="rules-line">🏆 Most points by the final whistle wins</p>
-  </div>
-
-  <div class="rules-divider"></div>
-
-  <div class="rules-section">
-    <p class="rules-subhead">Placing Bets</p>
-    <p class="rules-line">Each match has 3 options — Team 1, Draw, or Team 2 — each with its own live odds. A draw only pays if you picked Draw. In the knockouts there's no draw — you pick which team advances, and extra time and penalties count.</p>
-    <p class="rules-line">You can change your pick, stake, or cancel any time until betting closes (5 min before kickoff). Your odds lock in when you bet — if they move, tap <strong>Adjust</strong> to switch your whole stake to the new odds.</p>
-  </div>
-
-  <div class="rules-divider"></div>
-
-  <div class="rules-section">
-    <p class="rules-subhead">⚡ Side Bets</p>
-    <p class="rules-line">On top of the match result, some matches have extra markets you can bet — so you can place up to <strong>3 separate bets on one match</strong>. Each is staked and settled on its own (no combos — they don't stack into one multiplier).</p>
-    <p class="rules-line"><strong class="gold-text">Total Goals (Over/Under 2.5)</strong> — bet on whether the match has <strong>3+ goals</strong> (Over) or <strong>2 or fewer</strong> (Under). Both teams' goals count, so a 2–1 result is 3 goals → Over wins.</p>
-    <p class="rules-line"><strong class="gold-text">Both Teams To Score</strong> — bet <strong>Yes</strong> if you think both teams score at least once, or <strong>No</strong> if one team gets shut out. A 2–1 → Yes wins; a 3–0 → No wins.</p>
-    <p class="rules-line">Side-bet odds are live from the market just like match odds, and each bet wins or loses independently.</p>
-  </div>
-
-  <div class="rules-divider"></div>
-
-  <div class="rules-section">
-    <p class="rules-subhead">Understanding Your Stats</p>
-    <p class="rules-line"><strong class="gold-text">R:R (Risk : Reward)</strong> — how much you aim to win per point staked, averaged across all your bets. A bet of 100 at 2.5x risks 100 to win 150, so R:R = 1.5:1. Low R:R means you back safe favourites; high R:R means you chase big underdogs.</p>
-    <p class="rules-line"><strong class="gold-text">ROI (Return on Investment)</strong> — how much you've actually made or lost. It's your total winnings minus total staked, divided by total staked. Stake 10,000 across bets and get back 11,500? That's a <span class="green-text">+15% ROI</span>. Get back 8,000? That's <span class="red-text">−20%</span>. R:R shows your style; ROI shows if it's working.</p>
-  </div>
-</div>
-
-  <div class="hero-points">
-    <span id="heroPoints">0</span>
-    <small>points</small>
-  </div>
-</div>
-
-  <div class="quick-stats-grid">
-    <div class="quick-stat">
-      <span>🎯</span>
-      <h4>Total Predictions</h4>
-      <p id="quickTotalPredictions">0</p>
-    </div>
-
-    <div class="quick-stat">
-      <span>✅</span>
-      <h4>Correct Bets</h4>
-      <p id="quickWins">0</p>
-    </div>
-
-    <div class="quick-stat">
-      <span>📈</span>
-      <h4>Success Rate</h4>
-      <p id="quickSuccessRate">0%</p>
-    </div>
-
-    <div class="quick-stat">
-      <span>🏆</span>
-      <h4>Current Rank</h4>
-      <p id="quickRank">Rookie ⚪</p>
-    </div>
-  </div>
-
-  <div class="dashboard-grid">
-
-    <div class="dash-card profile-card">
-      <div class="avatar-circle">👤</div>
-      <h3>Player</h3>
-      <p id="dashboardUsername">-</p>
-      <span class="online-status">● Online</span>
-    </div>
-
-    <div class="dash-card points-card">
-      <div class="points-icon">💎</div>
-      <h3>Your Points</h3>
-      <p id="dashboardPoints">0</p>
-      <span class="points-subtitle">Current Balance</span>
-    </div>
-
-    <div class="dash-card rank-card">
-      <div class="rank-badge">🏆</div>
-      <h3>Your Rank</h3>
-      <p id="dashboardRank">Rookie ⚪</p>
-      <span class="rank-subtitle">League Status</span>
-    </div>
-
-    <div class="dash-card actions-card">
-      <h3>Actions</h3>
-
-      <div class="action-grid">
-        <button onclick="showLeaderboardSection()" class="nav-btn">
-          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-            <path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"/><path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"/>
-            <path d="M4 22h16"/><path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22"/>
-            <path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22"/>
-            <path d="M18 2H6v7a6 6 0 0 0 12 0V2Z"/>
-          </svg>
-          <span>Leaderboard</span>
-        </button>
-        <button onclick="showMatchesSection()" class="nav-btn">
-          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-            <circle cx="12" cy="12" r="10"/>
-            <path d="M12 2a14.5 14.5 0 0 0 0 20"/><path d="M12 2a14.5 14.5 0 0 1 0 20"/>
-            <path d="M2 12h20"/>
-          </svg>
-          <span>Matches</span>
-        </button>
-        <button onclick="showHistorySection()" class="nav-btn">
-          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-            <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/>
-            <path d="M12 7v5l4 2"/>
-          </svg>
-          <span>History</span>
-        </button>
-        <button onclick="showActiveBetsSection()" class="nav-btn">
-          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-            <path d="M12 2c1 3 3 5 3 8a5 5 0 0 1-10 0c0-2 1-3 2-4 0 2 1 3 2 3-1-3 1-5 3-7Z"/>
-            <path d="M9 15a3 3 0 0 0 6 0c0-1-1-2-1.5-3-.5 1-1 2-1.5 2s-1-1-1.5-2c-.5 1-1.5 2-1.5 3Z"/>
-          </svg>
-          <span>Live Bets</span>
-        </button>
-        <button onclick="showStatsSection()" class="nav-btn">
-          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-            <path d="M3 3v18h18"/><path d="M7 16V9"/><path d="M12 16V5"/><path d="M17 16v-4"/>
-          </svg>
-          <span>Stats</span>
-        </button>
-        <button onclick="showRouletteSection()" class="nav-btn">
-          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-            <circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="4"/>
-            <path d="M12 2v4"/><path d="M12 18v4"/><path d="M2 12h4"/><path d="M18 12h4"/>
-            <path d="m4.93 4.93 2.83 2.83"/><path d="m16.24 16.24 2.83 2.83"/>
-            <path d="m4.93 19.07 2.83-2.83"/><path d="m16.24 7.76 2.83-2.83"/>
-          </svg>
-          <span>Roulette</span>
-        </button>
-      </div>
-    </div>
-
-  </div>
-
-  <div class="dash-card full hidden" id="leaderboardSection">
-    <h3>Leaderboard</h3>
-    <div id="leaderboard"></div>
-  </div>
-
-  <div class="dash-card full hidden" id="matchesSection">
-    <h3>Matches</h3>
-    <p class="small-text">Click a date to view matches for that day.</p>
-    <div id="matches"></div>
-  </div>
-
-  <div class="dash-card full hidden" id="activeBetsSection">
-    <h3>🔥 Live Bets</h3>
-    <p class="small-text">All unsettled bets currently placed by players.</p>
-    <div id="activeBetsList"></div>
-  </div>
-
-  <div class="dash-card full hidden" id="rouletteSection">
-    <h3>🎰 Roulette</h3>
-    <p class="small-text">Pick a colour, set your stake, and spin. Red or Black pays 2×. Green pays 14×.</p>
-
-    <div class="roulette-wrap">
-      <div class="roulette-stage">
-        <div class="roulette-pointer">▼</div>
-        <div class="roulette-wheel" id="rouletteWheel"></div>
-        <div class="roulette-hub" id="rouletteResultBadge">—</div>
-      </div>
-
-      <div class="roulette-colors">
-        <button type="button" class="rcolor rcolor-red"   data-color="red"   onclick="rSelectColor('red', this)">RED<span>2×</span></button>
-        <button type="button" class="rcolor rcolor-green" data-color="green" onclick="rSelectColor('green', this)">GREEN<span>14×</span></button>
-        <button type="button" class="rcolor rcolor-black" data-color="black" onclick="rSelectColor('black', this)">BLACK<span>2×</span></button>
-      </div>
-
-      <div class="roulette-stake">
-        <div class="rstake-top">
-          <span class="rstake-label">Stake</span>
-          <span class="rstake-val" id="rStakeVal">0 pts</span>
+      <div class="auth-card">
+        <h2 data-i18n="login.title">Sign in</h2>
+        <div>
+          <label for="loginUsername" data-i18n="login.username">Display name</label>
+          <input type="text" id="loginUsername" autocomplete="username">
         </div>
-        <input type="range" class="roulette-slider" id="rSlider" min="0" max="0" step="5" value="0"
-          oninput="rSlide(this.value)">
-        <div class="rstake-row">
-          <input type="number" class="rstake-amount" id="rAmount" placeholder="0" min="0" step="5"
-            oninput="rType(this.value)">
-          <div class="rquick-row">
-            <button type="button" class="rquick" onclick="rAdd(1000)">+1k</button>
-            <button type="button" class="rquick" onclick="rAdd(5000)">+5k</button>
-            <button type="button" class="rquick" onclick="rAdd(10000)">+10k</button>
-            <button type="button" class="rquick rquick-clear" onclick="rClear()">C</button>
+        <div>
+          <label for="loginPassword" data-i18n="login.password">Password</label>
+          <input type="password" id="loginPassword" autocomplete="current-password">
+        </div>
+        <label class="remember-row">
+          <input type="checkbox" id="rememberMe">
+          <span class="rlabel" data-i18n="login.remember">Remember me</span>
+        </label>
+        <button class="btn-primary" onclick="login()" data-i18n="login.submit">Sign in</button>
+        <p class="auth-links" data-i18n-html="login.switch">
+          Don't have an account? <span onclick="showRegister()" data-i18n="login.register">Register here</span>
+        </p>
+        <p class="auth-links" style="color:var(--dimmer);font-size:11px;line-height:1.5;margin-top:8px;" data-i18n-html="login.notice">
+          Password recovery is unavailable. Keep your password safe.<br>Questions? +966 50 347 5147
+        </p>
+      </div>
+    </section>
+
+    <!-- REGISTER -->
+    <section id="registerPage" class="page hidden">
+      <div class="auth-brand">
+        <h1><span class="dot"></span>AJA League</h1>
+        <p data-i18n="register.tag">Create your account</p>
+      </div>
+      <div class="auth-card">
+        <h2 data-i18n="register.title">Register</h2>
+        <div>
+          <label for="registerUsername" data-i18n="register.username">Display name</label>
+          <input type="text" id="registerUsername" placeholder="e.g. ayyoob_98" oninput="this.value=this.value.replace(/[^A-Za-z0-9_.-]/g,'')">
+          <small style="display:block;color:var(--dimmer);font-size:11px;margin-top:4px;" data-i18n="register.username.hint">Shown to everyone on the leaderboard</small>
+        </div>
+        <div>
+          <label for="registerPassword" data-i18n="register.password">Password</label>
+          <input type="password" id="registerPassword">
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+          <div>
+            <label for="registerFirstName" data-i18n="register.first">First name</label>
+            <input type="text" id="registerFirstName" oninput="this.value=this.value.replace(/[^A-Za-z0-9_.-]/g,'')">
+          </div>
+          <div>
+            <label for="registerLastName" data-i18n="register.last">Last name</label>
+            <input type="text" id="registerLastName" oninput="this.value=this.value.replace(/[^A-Za-z0-9_.-]/g,'')">
+          </div>
+        </div>
+        <small style="color:var(--dimmer);font-size:11px;margin-top:-4px;" data-i18n="register.real.hint">Real name — only visible to admin</small>
+        <button class="btn-primary" onclick="register()" data-i18n="register.submit">Create account</button>
+        <p class="auth-links">
+          <span onclick="showLogin()" data-i18n="register.back">Back to sign in</span>
+        </p>
+      </div>
+    </section>
+
+    <!-- DASHBOARD -->
+    <section id="dashboardPage" class="page hidden">
+
+      <!-- Sticky top bar with lang toggle + brand + avatar -->
+      <div class="topbar">
+        <div class="lang-toggle" role="group" aria-label="Language">
+          <button type="button" data-lang="en" class="active" onclick="setLang('en')">EN</button>
+          <button type="button" data-lang="ar" onclick="setLang('ar')">ع</button>
+        </div>
+        <div class="topbar-brand">
+          <span class="topbar-brand-dot"></span>
+          <span>AJA</span>
+        </div>
+        <div class="topbar-avatar" id="topbarAvatar" onclick="logout()" title="Sign out">AY</div>
+      </div>
+
+      <!-- Balance hero -->
+      <div class="balance-card">
+        <div class="balance-label" data-i18n="balance.label">Balance</div>
+        <div class="balance-num"><span id="dashboardPoints">0</span><span class="unit">pts</span></div>
+        <div class="balance-stats">
+          <div class="balance-stat">
+            <div class="balance-stat-label" data-i18n="stats.rank">Rank</div>
+            <div class="balance-stat-val" id="dashboardRank">—</div>
+          </div>
+          <div class="balance-stat">
+            <div class="balance-stat-label" data-i18n="stats.bets">Live bets</div>
+            <div class="balance-stat-val" id="quickLiveBets">0</div>
+          </div>
+          <div class="balance-stat">
+            <div class="balance-stat-label" data-i18n="stats.rate">Win rate</div>
+            <div class="balance-stat-val pos" id="quickSuccessRate">0%</div>
+          </div>
+        </div>
+        <!-- Legacy IDs kept so old code writing to them still works -->
+        <span id="heroPoints" style="display:none;">0</span>
+        <span id="heroUsername" style="display:none;"></span>
+        <span id="heroRank" style="display:none;">—</span>
+        <span id="dashboardUsername" style="display:none;"></span>
+        <span id="quickTotalPredictions" style="display:none;">0</span>
+        <span id="quickWins" style="display:none;">0</span>
+        <span id="quickRank" style="display:none;">—</span>
+      </div>
+
+      <!-- Section containers (each screen) -->
+
+      <div id="leaderboardSection">
+        <div class="section-h">
+          <h2 data-i18n="lb.title">Leaderboard <span class="count" id="lbCount"></span></h2>
+        </div>
+        <div id="leaderboard" style="padding:0 16px 16px;"></div>
+      </div>
+
+      <div id="matchesSection" class="hidden">
+        <div class="section-h">
+          <h2 data-i18n="matches.title">Matches</h2>
+        </div>
+        <div id="matches"></div>
+      </div>
+
+      <div id="activeBetsSection" class="hidden">
+        <div class="section-h">
+          <h2 data-i18n="live.title">Live bets</h2>
+        </div>
+        <div id="activeBetsList" style="padding:0 16px 16px;"></div>
+      </div>
+
+      <div id="historySection" class="hidden">
+        <div class="section-h">
+          <h2 data-i18n="history.title">Your history</h2>
+        </div>
+        <div id="predictionHistory" style="padding:0 16px 16px;"></div>
+      </div>
+
+      <div id="statsSection" class="hidden">
+        <div class="section-h">
+          <h2 data-i18n="stats.title">Profile stats</h2>
+        </div>
+        <div id="profileStats" style="padding:0 16px 16px;"></div>
+      </div>
+
+      <div id="rouletteSection" class="hidden">
+        <div class="section-h">
+          <h2 data-i18n="rou.title">Roulette</h2>
+        </div>
+        <div style="padding:0 16px 16px;">
+          <p class="small-text" style="text-align:center;margin-bottom:12px;" data-i18n="rou.tag">Pick a colour, set your stake, spin. Red or Black pay 2×. Green pays 14×.</p>
+          <div class="roulette-wrap">
+            <div class="roulette-stage">
+              <div class="roulette-pointer">▼</div>
+              <div class="roulette-wheel" id="rouletteWheel"></div>
+              <div class="roulette-hub" id="rouletteResultBadge">—</div>
+            </div>
+            <div class="roulette-colors">
+              <button type="button" class="rcolor rcolor-red"   data-color="red"   onclick="rSelectColor('red', this)">RED<span>2×</span></button>
+              <button type="button" class="rcolor rcolor-green" data-color="green" onclick="rSelectColor('green', this)">GREEN<span>14×</span></button>
+              <button type="button" class="rcolor rcolor-black" data-color="black" onclick="rSelectColor('black', this)">BLACK<span>2×</span></button>
+            </div>
+            <div class="roulette-stake">
+              <div class="rstake-top">
+                <span class="rstake-label" data-i18n="rou.stake">Stake</span>
+                <span class="rstake-val" id="rStakeVal">0 pts</span>
+              </div>
+              <input type="range" class="roulette-slider" id="rSlider" min="0" max="0" step="5" value="0" oninput="rSlide(this.value)">
+              <div class="rstake-row">
+                <input type="number" class="rstake-amount" id="rAmount" placeholder="0" min="0" step="5" oninput="rType(this.value)">
+                <div class="rquick-row">
+                  <button type="button" class="rquick" onclick="rAdd(1000)">+1k</button>
+                  <button type="button" class="rquick" onclick="rAdd(5000)">+5k</button>
+                  <button type="button" class="rquick" onclick="rAdd(10000)">+10k</button>
+                  <button type="button" class="rquick rquick-clear" onclick="rClear()">C</button>
+                </div>
+              </div>
+            </div>
+            <button class="roulette-spin-btn" id="rSpinBtn" onclick="rSpin()" disabled data-i18n="rou.pick">Pick a colour</button>
+            <div class="roulette-outcome hidden" id="rOutcome"></div>
           </div>
         </div>
       </div>
 
-      <button class="confirm-btn roulette-spin-btn" id="rSpinBtn" onclick="rSpin()" disabled>Pick a colour</button>
-      <div class="roulette-outcome hidden" id="rOutcome"></div>
-    </div>
+      <div class="nav-pad"></div>
+
+      <!-- Bottom nav -->
+      <nav class="bottom-nav" aria-label="Main navigation">
+        <button type="button" class="nav-btn active" data-section="leaderboardSection" onclick="showLeaderboardSection()">
+          <svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"/><path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"/>
+            <path d="M4 22h16"/><path d="M18 2H6v7a6 6 0 0 0 12 0V2Z"/>
+          </svg>
+          <span data-i18n="nav.leader">Ranks</span>
+        </button>
+        <button type="button" class="nav-btn" data-section="matchesSection" onclick="showMatchesSection()">
+          <svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true">
+            <circle cx="12" cy="12" r="10"/>
+            <path d="M2 12h20"/><path d="M12 2a14.5 14.5 0 0 0 0 20"/>
+          </svg>
+          <span data-i18n="nav.matches">Matches</span>
+        </button>
+        <button type="button" class="nav-btn" data-section="activeBetsSection" onclick="showActiveBetsSection()">
+          <svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M12 2c1 3 3 5 3 8a5 5 0 0 1-10 0c0-2 1-3 2-4 0 2 1 3 2 3-1-3 1-5 3-7Z"/>
+          </svg>
+          <span data-i18n="nav.live">Live</span>
+        </button>
+        <button type="button" class="nav-btn" data-section="historySection" onclick="showHistorySection()">
+          <svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M3 12a9 9 0 1 0 9-9"/><path d="M3 3v5h5"/><path d="M12 7v5l4 2"/>
+          </svg>
+          <span data-i18n="nav.history">History</span>
+        </button>
+        <button type="button" class="nav-btn" data-section="statsSection" onclick="showStatsSection()">
+          <svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M3 3v18h18"/><path d="M7 16V9"/><path d="M12 16V5"/><path d="M17 16v-4"/>
+          </svg>
+          <span data-i18n="nav.stats">Stats</span>
+        </button>
+        <button type="button" class="nav-btn" data-section="rouletteSection" onclick="showRouletteSection()">
+          <svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true">
+            <circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="4"/>
+          </svg>
+          <span data-i18n="nav.rou">Roulette</span>
+        </button>
+      </nav>
+
+    </section>
+
   </div>
 
-  <div class="dash-card full hidden" id="historySection">
-    <h3>Prediction History</h3>
-    <div id="predictionHistory"></div>
-  </div>
-
-  <div class="dash-card full hidden" id="statsSection">
-    <h3>Profile Statistics</h3>
-    <div id="profileStats"></div>
-  </div>
-
-</section>
-
-  </div>
   <!-- User History Modal -->
-  <div id="userHistoryModal" class="modal-overlay hidden">
-    <div class="modal-box">
-      <div class="modal-header">
-        <h3 id="userHistoryTitle">Player History</h3>
-        <button class="modal-close" onclick="closeUserHistory()">✕</button>
-      </div>
-      <div id="userHistoryStats" class="user-history-stats"></div>
-      <div id="userHistoryList" class="user-history-list"></div>
+  <div id="userHistoryModal" class="hidden" onclick="if(event.target===this)closeUserHistory()">
+    <div class="modal-content">
+      <h3 id="userHistoryTitle">Player history</h3>
+      <div id="userHistoryStats"></div>
+      <div id="userHistoryList"></div>
     </div>
   </div>
 

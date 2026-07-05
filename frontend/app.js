@@ -624,6 +624,10 @@ function showDashboard() {
   document.getElementById("registerPage").classList.add("hidden");
   document.getElementById("dashboardPage").classList.remove("hidden");
   hideAllDashboardSections();
+  // Default landing view: leaderboard. Otherwise the dashboard opens with only
+  // the balance card visible and empty space below it.
+  const lb = document.getElementById("leaderboardSection");
+  if (lb) lb.classList.remove("hidden");
 }
 
 function enterDashboard() {
@@ -1070,6 +1074,8 @@ async function register() {
 async function login() {
   const username = document.getElementById("loginUsername").value.trim();
   const password = document.getElementById("loginPassword").value.trim();
+  const rememberEl = document.getElementById("rememberMe");
+  const remember = rememberEl ? rememberEl.checked : false;
 
   if (!username || !password) {
     alert("Please enter login details.");
@@ -1093,6 +1099,16 @@ async function login() {
     if (!data.token) {
       alert(data.message || "Login failed.");
       return;
+    }
+
+    // Remember-me: persist the username (never the password) if opted in.
+    // Token itself is always stored — separate concern.
+    if (remember) {
+      localStorage.setItem("rememberedUsername", username);
+      localStorage.setItem("rememberMe", "1");
+    } else {
+      localStorage.removeItem("rememberedUsername");
+      localStorage.removeItem("rememberMe");
     }
 
     localStorage.setItem("token", data.token);
@@ -2530,3 +2546,206 @@ function closeResultsModal() {
   const modal = document.getElementById("resultsModal");
   if (modal) modal.remove();
 }
+
+// ─── SIGNAL: bottom-nav active state, i18n toggle, remember-me, micro-motions ─
+// These append at the end so they can wrap/override existing behaviour without
+// touching earlier logic.
+
+// Update the bottom nav's active state whenever a section is shown.
+// Called from each showXSection() by observing DOM changes on the section list.
+(function wireNavActiveState() {
+  function updateNavFromVisibleSection() {
+    const sections = ["leaderboardSection","matchesSection","activeBetsSection","historySection","statsSection","rouletteSection"];
+    let visibleId = null;
+    for (const id of sections) {
+      const el = document.getElementById(id);
+      if (el && !el.classList.contains("hidden")) { visibleId = id; break; }
+    }
+    document.querySelectorAll(".bottom-nav .nav-btn").forEach(btn => {
+      btn.classList.toggle("active", btn.getAttribute("data-section") === visibleId);
+    });
+  }
+  // Poll on interval — cheap, guarantees correctness even if a show function
+  // is called externally without an obvious hook.
+  setInterval(updateNavFromVisibleSection, 300);
+})();
+
+// Countdown urgency — toggle .urgent class on timer elements when <10 min.
+// Runs alongside the existing setInterval that updates timer text.
+(function wireCountdownUrgency() {
+  setInterval(() => {
+    document.querySelectorAll('[id^="timer-"]').forEach(el => {
+      const text = (el.textContent || "").trim();
+      // Existing format: "00h 09m 43s". Parse total seconds.
+      const m = text.match(/(\d+)h\s*(\d+)m\s*(\d+)s/);
+      if (!m) { el.classList.remove("urgent"); return; }
+      const totalSec = (+m[1]) * 3600 + (+m[2]) * 60 + (+m[3]);
+      el.classList.toggle("urgent", totalSec > 0 && totalSec < 600);
+    });
+  }, 1000);
+})();
+
+// Rank number roll — play a subtle slot-flip when dashboardRank changes.
+(function wireRankRoll() {
+  const el = document.getElementById("dashboardRank");
+  if (!el) return;
+  let lastVal = el.textContent;
+  const observer = new MutationObserver(() => {
+    const v = el.textContent;
+    if (v !== lastVal && lastVal && v && v !== "—") {
+      el.classList.remove("rank-rolled");
+      // Force reflow so re-adding the class restarts the animation.
+      void el.offsetWidth;
+      el.classList.add("rank-rolled");
+    }
+    lastVal = v;
+  });
+  observer.observe(el, { childList: true, characterData: true, subtree: true });
+})();
+
+// Remember-me pre-fill on page load.
+(function wireRememberMe() {
+  document.addEventListener("DOMContentLoaded", () => {
+    const remembered = localStorage.getItem("rememberedUsername");
+    const on = localStorage.getItem("rememberMe") === "1";
+    if (remembered) {
+      const u = document.getElementById("loginUsername");
+      const c = document.getElementById("rememberMe");
+      if (u) u.value = remembered;
+      if (c) c.checked = on;
+    }
+  });
+})();
+
+// ─── i18n: EN / AR toggle ────────────────────────────────────────────────
+// Wire the top-left toggle. English is the source of truth; Arabic strings
+// go in the AJA_I18N map — currently empty (English falls back where missing).
+// When you have translations, drop them in and they'll take effect immediately.
+window.AJA_I18N = {
+  ar: {
+    // ─── Login ────────────────────────────────────────────────────────
+    "login.title":       "تسجيل الدخول",
+    "login.tag":         "بالتوفيق 😘",
+    "login.username":    "اسم المستخدم",
+    "login.password":    "كلمة المرور",
+    "login.remember":    "تذكرني",
+    "login.submit":      "دخول",
+    "login.switch":      "ليس لديك حساب؟ <span onclick=\"showRegister()\">سجّل من هنا</span>",
+    "login.register":    "سجّل من هنا",
+    "login.notice":      "استعادة كلمة المرور غير متاحة. احتفظ بكلمة مرورك في مكان آمن.<br>للاستفسار: 5147 347 50 966+",
+
+    // ─── Register ─────────────────────────────────────────────────────
+    "register.title":         "التسجيل",
+    "register.tag":           "إنشاء حساب",
+    "register.username":      "اسم المستخدم",
+    "register.username.hint": "الاسم الذي يراه الجميع في قائمة الترتيب",
+    "register.password":      "كلمة المرور",
+    "register.first":         "الاسم الأول",
+    "register.last":          "اسم العائلة",
+    "register.real.hint":     "الاسم الحقيقي — يظهر للمشرف فقط",
+    "register.submit":        "إنشاء حساب",
+    "register.back":          "العودة لتسجيل الدخول",
+
+    // ─── Agreement modal ──────────────────────────────────────────────
+    "agreement.title":    "مرحباً بك في دوري AJA للتوقعات",
+    "agreement.intro":    "قبل إنشاء حسابك، يُرجى قراءة الشروط التالية والموافقة عليها:",
+    "agreement.bullet.1": "هذه ليست منصة رهانات ولا تتضمن مقامرة بأموال حقيقية.",
+    "agreement.bullet.2": "النقاط للترفيه والترتيب والمشاركة المجتمعية فقط.",
+    "agreement.bullet.3": "بانضمامك، فأنت توافق على قواعد وشروط دوري AJA.",
+    "agreement.bullet.4": "AJA reserves the right to disqualify any participant found engaging in cheating, unfair play, or misuse of the platform. All decisions are final.",
+    "agreement.accept":   "أوافق وأتفهم",
+
+    // ─── Pending approval ─────────────────────────────────────────────
+    "pending.tag":     "في انتظار الموافقة",
+    "pending.title":   "الحساب قيد المراجعة",
+    "pending.body":    "تم إنشاء حسابك وهو في انتظار موافقة المشرف.",
+    "pending.contact": "للتفعيل، تواصل معنا:",
+    "pending.back":    "العودة لتسجيل الدخول",
+
+    // ─── Dashboard / stats ────────────────────────────────────────────
+    "balance.label": "الرصيد",
+    "stats.rank":    "الترتيب",
+    "stats.bets":    "رهانات مفتوحة",
+    "stats.rate":    "معدل النجاح",
+    "stats.title":   "الإحصائيات",
+
+    // ─── Section headers ──────────────────────────────────────────────
+    "lb.title":      "قائمة الترتيب",
+    "matches.title": "المباريات",
+    "live.title":    "الرهانات المفتوحة",
+    "history.title": "سجل الرهانات",
+
+    // ─── Roulette ─────────────────────────────────────────────────────
+    "rou.title": "روليت",
+    "rou.tag":   "اختر لوناً، حدّد الرهان، ثم أدر العجلة. الأحمر أو الأسود ٢× والأخضر ١٤×.",
+    "rou.stake": "الرهان",
+    "rou.pick":  "اختر لوناً",
+
+    // ─── Bottom nav ───────────────────────────────────────────────────
+    "nav.leader":  "الترتيب",
+    "nav.matches": "المباريات",
+    "nav.live":    "نشط",
+    "nav.history": "السجل",
+    "nav.stats":   "الإحصائيات",
+    "nav.rou":     "روليت",
+  }
+};
+
+function setLang(lang) {
+  if (lang !== "en" && lang !== "ar") lang = "en";
+  localStorage.setItem("aja_lang", lang);
+
+  // Flip document direction; numbers stay LTR via CSS (unicode-bidi: embed).
+  document.documentElement.setAttribute("dir", lang === "ar" ? "rtl" : "ltr");
+  document.documentElement.setAttribute("lang", lang);
+
+  // Update lang toggle button state.
+  document.querySelectorAll(".lang-toggle button").forEach(btn => {
+    btn.classList.toggle("active", btn.getAttribute("data-lang") === lang);
+  });
+
+  // Apply translations. If lang=en OR the key is missing, leave the element's
+  // baked-in English content alone (that's the source of truth).
+  const dict = (lang === "ar" && window.AJA_I18N.ar) ? window.AJA_I18N.ar : null;
+
+  document.querySelectorAll("[data-i18n]").forEach(el => {
+    const key = el.getAttribute("data-i18n");
+    const orig = el.getAttribute("data-i18n-orig");
+    // Cache original English on first pass.
+    if (!orig) el.setAttribute("data-i18n-orig", el.textContent);
+    if (dict && dict[key]) {
+      el.textContent = dict[key];
+    } else if (orig) {
+      el.textContent = orig;
+    }
+  });
+
+  document.querySelectorAll("[data-i18n-html]").forEach(el => {
+    const key = el.getAttribute("data-i18n-html");
+    const orig = el.getAttribute("data-i18n-orig-html");
+    if (!orig) el.setAttribute("data-i18n-orig-html", el.innerHTML);
+    if (dict && dict[key]) {
+      el.innerHTML = dict[key];
+    } else if (orig) {
+      el.innerHTML = orig;
+    }
+  });
+}
+
+// Apply saved language preference on load.
+document.addEventListener("DOMContentLoaded", () => {
+  const saved = localStorage.getItem("aja_lang") || "en";
+  setLang(saved);
+});
+
+// Set the avatar text to the current user's initials if we know them.
+(function wireAvatarInitials() {
+  setInterval(() => {
+    const avatar = document.getElementById("topbarAvatar");
+    if (!avatar) return;
+    const uname = localStorage.getItem("currentUsername");
+    if (!uname) return;
+    const initials = uname.slice(0, 2).toUpperCase();
+    if (avatar.textContent !== initials) avatar.textContent = initials;
+  }, 1000);
+})();
