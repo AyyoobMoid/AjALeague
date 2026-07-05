@@ -247,12 +247,52 @@
       <h3>Actions</h3>
 
       <div class="action-grid">
-        <button onclick="showLeaderboardSection()">🏅 Leaderboard</button>
-        <button onclick="showMatchesSection()">⚽ Matches</button>
-        <button onclick="showHistorySection()">📜 History</button>
-        <button onclick="showActiveBetsSection()">🔥 Live Bets</button>
-        <button onclick="showStatsSection()">📊 Stats</button>
-        <button onclick="showRouletteSection()">🎰 Roulette</button>
+        <button onclick="showLeaderboardSection()" class="nav-btn">
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"/><path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"/>
+            <path d="M4 22h16"/><path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22"/>
+            <path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22"/>
+            <path d="M18 2H6v7a6 6 0 0 0 12 0V2Z"/>
+          </svg>
+          <span>Leaderboard</span>
+        </button>
+        <button onclick="showMatchesSection()" class="nav-btn">
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <circle cx="12" cy="12" r="10"/>
+            <path d="M12 2a14.5 14.5 0 0 0 0 20"/><path d="M12 2a14.5 14.5 0 0 1 0 20"/>
+            <path d="M2 12h20"/>
+          </svg>
+          <span>Matches</span>
+        </button>
+        <button onclick="showHistorySection()" class="nav-btn">
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/>
+            <path d="M12 7v5l4 2"/>
+          </svg>
+          <span>History</span>
+        </button>
+        <button onclick="showActiveBetsSection()" class="nav-btn">
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M12 2c1 3 3 5 3 8a5 5 0 0 1-10 0c0-2 1-3 2-4 0 2 1 3 2 3-1-3 1-5 3-7Z"/>
+            <path d="M9 15a3 3 0 0 0 6 0c0-1-1-2-1.5-3-.5 1-1 2-1.5 2s-1-1-1.5-2c-.5 1-1.5 2-1.5 3Z"/>
+          </svg>
+          <span>Live Bets</span>
+        </button>
+        <button onclick="showStatsSection()" class="nav-btn">
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M3 3v18h18"/><path d="M7 16V9"/><path d="M12 16V5"/><path d="M17 16v-4"/>
+          </svg>
+          <span>Stats</span>
+        </button>
+        <button onclick="showRouletteSection()" class="nav-btn">
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="4"/>
+            <path d="M12 2v4"/><path d="M12 18v4"/><path d="M2 12h4"/><path d="M18 12h4"/>
+            <path d="m4.93 4.93 2.83 2.83"/><path d="m16.24 16.24 2.83 2.83"/>
+            <path d="m4.93 19.07 2.83-2.83"/><path d="m16.24 7.76 2.83-2.83"/>
+          </svg>
+          <span>Roulette</span>
+        </button>
       </div>
     </div>
 

@@ -24,6 +24,26 @@
   --card-border: rgba(255, 214, 0, 0.28);
   --text-main: #f8fafc;
   --text-soft: #cbd5e1;
+
+  /* ── Motion tokens (Emil-inspired: fast, punchy, opinionated) ────
+     Use these instead of ad-hoc timing values. Keeps motion cohesive. */
+  --dur-instant: 100ms;      /* micro-feedback: press, focus */
+  --dur-fast:    180ms;      /* hover, small state changes */
+  --dur-med:     280ms;      /* section reveal, larger transitions */
+  --dur-slow:    420ms;      /* dramatic reveals (bet-placed check) */
+  --ease-out:    cubic-bezier(0.16, 1, 0.3, 1);   /* strong ease-out, snappy stop */
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1); /* subtle overshoot for pops */
+  --ease-inout:  cubic-bezier(0.65, 0, 0.35, 1);   /* symmetric, for reversible */
+}
+
+/* Respect user preference — nobody who's opted out of motion should see any. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }
 
 body {
@@ -1667,7 +1687,7 @@ button:hover::after {
   border: 1px solid rgba(255, 214, 0, 0.3);
   border-radius: 10px;
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: background var(--dur-fast) var(--ease-out), border-color var(--dur-fast) var(--ease-out), transform var(--dur-instant) var(--ease-out);
   color: #fff;
 }
 
@@ -2339,7 +2359,7 @@ button:hover::after {
   background: rgba(255, 255, 255, 0.03);
   color: #eee;
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: background var(--dur-fast) var(--ease-out), border-color var(--dur-fast) var(--ease-out), transform var(--dur-instant) var(--ease-out);
 }
 .bb-opt:hover { border-color: rgba(255, 214, 0, 0.5); }
 .bb-opt-active {
@@ -2785,3 +2805,74 @@ button:hover::after {
   color: #4ade80; font-weight: 700; font-size: 14px;
   text-transform: uppercase; letter-spacing: 0.06em;
 }
+
+/* ─── Face-lift: press feedback, focus states, hover gate ─────────────────
+   Emil rule: motion should feel like a physical response, not decoration.
+   The 100ms scale-down on press is the difference between "app" and "web page". */
+
+/* Press feedback on tappable/clickable elements */
+button, .bb-opt, .rcolor, .rquick, .leaderboard-item, .match-item {
+  transition: transform var(--dur-instant) var(--ease-out),
+              background var(--dur-fast) var(--ease-out),
+              border-color var(--dur-fast) var(--ease-out),
+              box-shadow var(--dur-fast) var(--ease-out);
+}
+button:active:not(:disabled),
+.bb-opt:active,
+.rcolor:active,
+.rquick:active,
+.leaderboard-item:active,
+.match-item:active {
+  transform: scale(0.97);
+  transition-duration: var(--dur-instant);
+}
+
+/* Visible focus states — required for keyboard users, was missing */
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+[role="button"]:focus-visible,
+.bb-opt:focus-visible,
+.rcolor:focus-visible,
+.leaderboard-item:focus-visible,
+.match-item:focus-visible {
+  outline: 2px solid var(--yugo-yellow);
+  outline-offset: 2px;
+}
+/* Remove the browser default that clashes with the yellow */
+button:focus:not(:focus-visible) { outline: none; }
+
+/* Hover-only-on-hover: prevents stuck :hover states after taps on mobile */
+@media (hover: hover) {
+  .bb-opt:hover:not(.bb-opt-active) { border-color: rgba(255, 214, 0, 0.5); }
+  .rcolor:hover:not(:disabled) { transform: translateY(-1px); box-shadow: 0 4px 12px -4px rgba(0,0,0,0.4); }
+  .rquick:hover:not(:disabled) { background: rgba(255, 214, 0, 0.18); }
+  .leaderboard-item:hover { background: rgba(255, 214, 0, 0.04); }
+  .match-item:hover { border-color: rgba(255, 214, 0, 0.4); }
+}
+
+/* ─── Face-lift: nav-btn (SVG icon replacement) ─────────────────────── */
+.nav-btn {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 8px; padding: 14px 8px; min-height: 76px;
+  background: rgba(255, 214, 0, 0.06);
+  border: 1px solid rgba(255, 214, 0, 0.22);
+  border-radius: 12px;
+  color: var(--yugo-yellow);
+  font-family: inherit; font-size: 13px; font-weight: 600;
+  cursor: pointer;
+  transition: background var(--dur-fast) var(--ease-out),
+              border-color var(--dur-fast) var(--ease-out),
+              transform var(--dur-instant) var(--ease-out);
+}
+.nav-btn .nav-icon {
+  width: 26px; height: 26px;
+  stroke: var(--yugo-yellow);
+  transition: transform var(--dur-fast) var(--ease-out);
+}
+@media (hover: hover) {
+  .nav-btn:hover { background: rgba(255, 214, 0, 0.12); border-color: rgba(255, 214, 0, 0.5); }
+  .nav-btn:hover .nav-icon { transform: scale(1.08); }
+}
+.nav-btn:active { transform: scale(0.96); }

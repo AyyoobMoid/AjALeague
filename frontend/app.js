@@ -18,13 +18,18 @@ const API = "/api";
 // ── Animation helpers (anime.js) ──────────────────────────────────────────────
 // All wrapped so the app never breaks if the CDN is blocked — if `anime` isn't
 // loaded, these fall back to instant/no-op behaviour.
+// ALSO respect prefers-reduced-motion (Emil/A11y): if the user has opted out
+// of motion, all animation helpers no-op — they still update final state, they
+// just skip the animation itself.
 const hasAnime = () => typeof anime === "function";
+const prefersReducedMotion = () => window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+const canAnimate = () => hasAnime() && !prefersReducedMotion();
 
 // Count a number element up/down to a new value (used for balance changes).
 function animateNumber(el, from, to, opts = {}) {
   if (!el) return;
   const fmt = opts.format || ((n) => Math.round(n).toLocaleString());
-  if (!hasAnime()) { el.textContent = fmt(to); return; }
+  if (!canAnimate()) { el.textContent = fmt(to); return; }
   const state = { v: from };
   anime({
     targets: state,
@@ -38,7 +43,7 @@ function animateNumber(el, from, to, opts = {}) {
 
 // Pop an element in (scale + fade) — used for reveals like win badges.
 function animatePop(el, opts = {}) {
-  if (!el || !hasAnime()) return;
+  if (!el || !canAnimate()) return;
   anime({
     targets: el,
     scale: [opts.from || 0.6, 1],
@@ -50,7 +55,7 @@ function animatePop(el, opts = {}) {
 
 // Stagger a list of children into view (used for leaderboard / lists).
 function animateStagger(els, opts = {}) {
-  if (!els || !els.length || !hasAnime()) return;
+  if (!els || !els.length || !canAnimate()) return;
   anime({
     targets: els,
     translateY: [opts.dy != null ? opts.dy : 12, 0],
@@ -63,22 +68,27 @@ function animateStagger(els, opts = {}) {
 
 // Fade + slide a section IN when it's revealed. Sections use position:relative
 // (no centering transform), so animating transform here is safe.
+// Emil rule: no motion on frequent actions — animate only the FIRST time this
+// section is revealed per page-load; snap on all subsequent tab switches.
 function animateSectionIn(el) {
-  if (!el || !hasAnime()) return;
-  anime.remove(el);                 // cancel any prior animation on this element
+  if (!el || !canAnimate()) return;
+  if (!window._sectionSeen) window._sectionSeen = {};
+  if (window._sectionSeen[el.id]) return;   // already seen; snap
+  window._sectionSeen[el.id] = true;
+  anime.remove(el);
   anime({
     targets: el,
     translateY: [8, 0],
     opacity: [0, 1],
-    duration: 320,
-    easing: "easeOutCubic",
+    duration: 280,
+    easing: "cubicBezier(.16,1,.3,1)",
   });
 }
 
 // Bet-placed confirmation moment: a green checkmark pops in over the builder,
 // holds briefly, then fades. Non-blocking — the rest of the flow keeps running.
 function animateBetPlacedConfirm(matchId, count) {
-  if (!hasAnime()) return;
+  if (!canAnimate()) return;
   const anchor = document.getElementById(`bet-builder-${matchId}`) ||
                  document.getElementById(`match-${matchId}`) || document.body;
   const rect = anchor.getBoundingClientRect();
@@ -485,9 +495,9 @@ async function bbPlace(matchId) {
     alert(`Total staked (${totalStake.toLocaleString()}) is more than your balance (${lastKnownPoints.toLocaleString()}). Lower an amount.`);
     return;
   }
-  const summary = legs.map(l => `• ${l.label} @ ${l.odds.toFixed(2)}x — ${l.amount.toLocaleString()} pts`).join('\n');
-  if (!confirm(`⚠️ Confirm ${legs.length} bet${legs.length > 1 ? 's' : ''}\n\n${summary}\n\nTotal staked: ${totalStake.toLocaleString()} pts\nIf all win: ${totalReturn.toLocaleString()} pts\n\nEach bet settles independently. Place them?`)) return;
-
+  // No confirmation dialog — bets are cancellable up to prediction close, so the
+  // dialog is friction without safety benefit. The bet-placed check + easy
+  // cancel from the match card is the safety net.
   const token = localStorage.getItem('token');
   showLoadingOverlay(`Placing ${legs.length} bet${legs.length > 1 ? 's' : ''}...`);
 
