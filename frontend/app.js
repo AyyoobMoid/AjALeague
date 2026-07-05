@@ -1268,19 +1268,19 @@ async function loadLeaderboard() {
       }
 
       box.innerHTML += `
-        <div class="leaderboard-item rank-${currentRank}" onclick="showUserHistory('${user.username}')" style="cursor:pointer" title="View ${user.username}'s bet history">
+        <div class="leaderboard-item rank-${currentRank}" onclick="showUserHistory('${user.username}')" style="cursor:pointer" title="${L('lb.viewHistory','View')} ${user.username}">
           <span class="leader-badge">${badge}</span>
 
           <div class="leader-info">
             <strong>#${currentRank} ${user.username}</strong>${rankArrow}
-            <small>${getRank(user.points)}${Number(user.staked_points) > 0 ? ` · ${Number(user.staked_points).toLocaleString()} in play` : ''}</small>
+            <small>${getRank(user.points)}${Number(user.staked_points) > 0 ? ` · ${Number(user.staked_points).toLocaleString()} ${L('lb.inPlay','in play')}` : ''}</small>
           </div>
 
-          <div class="cash-badge-slot">${user.cash_eligible === 1 ? '<span class="cash-badge" title="Eligible for cash prizes">$</span>' : ''}</div>
+          <div class="cash-badge-slot">${user.cash_eligible === 1 ? `<span class="cash-badge" title="${L('lb.cashEligible','Eligible for cash prizes')}">$</span>` : ''}</div>
 
           <div class="leader-points">
             ${Number(user.points).toLocaleString()}
-            <span>pts</span>
+            <span>${L('unit.pts','pts')}</span>
           </div>
         </div>
       `;
@@ -1604,19 +1604,20 @@ async function loadPredictionHistory() {
         const net = Number(rs.net) || 0;
         const cls = net > 0 ? "roulette-up" : (net < 0 ? "roulette-down" : "roulette-even");
         const sign = net > 0 ? "+" : "";
-        const verb = net > 0 ? "up" : (net < 0 ? "down" : "even");
+        const verbKey = net > 0 ? "rpnl.up" : (net < 0 ? "rpnl.down" : "rpnl.even");
+        const verbFallback = net > 0 ? "up" : (net < 0 ? "down" : "even");
         box.innerHTML += `
           <div class="roulette-pnl-card ${cls}">
             <div class="rpnl-left">
               <span class="rpnl-icon">🎰</span>
               <div>
-                <div class="rpnl-title">Roulette</div>
-                <div class="rpnl-sub">${rs.spins} spin${rs.spins === 1 ? "" : "s"} · ${rs.wins} won · ${rs.wagered.toLocaleString()} wagered</div>
+                <div class="rpnl-title">${L("rou.title","Roulette")}</div>
+                <div class="rpnl-sub">${rs.spins} ${L("rpnl.spins","spin"+(rs.spins===1?"":"s"))} · ${rs.wins} ${L("rpnl.won","won")} · ${rs.wagered.toLocaleString()} ${L("rpnl.wagered","wagered")}</div>
               </div>
             </div>
             <div class="rpnl-net">
               <div class="rpnl-amount">${sign}${net.toLocaleString()}</div>
-              <div class="rpnl-label">pts ${verb}</div>
+              <div class="rpnl-label">${L("unit.pts","pts")} ${L(verbKey, verbFallback)}</div>
             </div>
           </div>
         `;
@@ -1624,7 +1625,7 @@ async function loadPredictionHistory() {
     } catch (e) { /* roulette stats are non-critical; skip card on error */ }
 
     if (!data || data.length === 0) {
-      box.innerHTML += "<p>No predictions yet.</p>";
+      box.innerHTML += `<p class="empty-state">${L("empty.history","No predictions yet.")}</p>`;
       return;
     }
 
@@ -1646,9 +1647,10 @@ async function loadPredictionHistory() {
       // Friendly pick + result labels for sidebets.
       const type = (item.bet_type || "moneyline").toLowerCase();
       const line = item.total_line ? parseFloat(item.total_line) : 2.5;
-      let pickLabel = item.selected_team;
-      if (type === "total") pickLabel = `Total ${item.selected_team === "OVER" ? "Over" : "Under"} ${line}`;
-      else if (type === "btts") pickLabel = `BTTS ${item.selected_team === "YES" ? "Yes" : "No"}`;
+      let pickLabel = teamFullName(item.selected_team);
+      if (type === "total") pickLabel = `${L("bet.total","Total")} ${item.selected_team === "OVER" ? L("bet.totalOver","Over") : L("bet.totalUnder","Under")} ${line}`;
+      else if (type === "btts") pickLabel = `${L("bet.btts","BTTS")} ${item.selected_team === "YES" ? L("bet.yes","Yes") : L("bet.no","No")}`;
+      else if (item.selected_team === "DRAW") pickLabel = L("bet.draw","Draw");
       let resultText = item.result;
       if (type !== "moneyline" && item.result) {
         const m = item.settlement_message && item.settlement_message.match(/\((\d+)\s*-\s*(\d+)\)/);
@@ -1656,31 +1658,31 @@ async function loadPredictionHistory() {
       }
 
       let statusColor = "#facc15";
-      let statusText = "⏳ Pending";
+      let statusText = `⏳ ${L("bet.pending","Pending")}`;
       let payoutLine = "";
 
       if (isCorrect) {
         statusColor = "#22c55e";
-        statusText = "✅ Correct";
+        statusText = `✅ ${L("hist.correct","Correct")}`;
         const oddsStr = odds ? ` @ ${odds.toFixed(2)}x` : "";
-        payoutLine = `<p style="color:#22c55e;font-weight:bold;">Won ${payout.toLocaleString()} ${L("unit.pts","pts")} (+${profit.toLocaleString()} profit${oddsStr})</p>`;
+        payoutLine = `<p style="color:#22c55e;font-weight:bold;">${L("hist.won","Won")} ${payout.toLocaleString()} ${L("unit.pts","pts")} (+${profit.toLocaleString()} ${L("hist.profit","profit")}${oddsStr})</p>`;
       } else if (isRefund) {
         statusColor = "#facc15";
-        statusText = "↩ Refunded";
-        payoutLine = `<p style="color:#facc15;font-weight:bold;">Stake refunded: ${item.points_used.toLocaleString()} ${L("unit.pts","pts")}</p>`;
+        statusText = `↩ ${L("bet.refund","Refunded")}`;
+        payoutLine = `<p style="color:#facc15;font-weight:bold;">${L("hist.refunded","Stake refunded")}: ${item.points_used.toLocaleString()} ${L("unit.pts","pts")}</p>`;
       } else if (isWrong) {
         statusColor = "#ef4444";
-        statusText = "❌ Wrong";
+        statusText = `❌ ${L("hist.wrong","Wrong")}`;
         const oddsStr = odds ? ` @ ${odds.toFixed(2)}x` : "";
-        payoutLine = `<p style="color:#ef4444;font-weight:bold;">Lost ${item.points_used.toLocaleString()} ${L("unit.pts","pts")}${oddsStr}</p>`;
+        payoutLine = `<p style="color:#ef4444;font-weight:bold;">${L("hist.lost","Lost")} ${item.points_used.toLocaleString()} ${L("unit.pts","pts")}${oddsStr}</p>`;
       }
 
       box.innerHTML += `
         <div class="match-item">
           <h4>${teamPair(item.team_a, item.team_b)}</h4>
           <p style="font-size:0.82rem;color:#aaa;">${item.stage}${item.group_name ? " · " + item.group_name : ""} · ${matchDate}</p>
-          <p>Pick: <strong>${pickLabel}</strong> · Staked: <strong>${item.points_used.toLocaleString()} ${L("unit.pts","pts")}</strong>${odds ? ` · Odds: <strong>${odds.toFixed(2)}x</strong>` : ""}</p>
-          ${item.result ? `<p style="color:#aaa;font-size:0.82rem;">Result: ${resultText}</p>` : ""}
+          <p>${L("hist.pick","Pick")}: <strong>${pickLabel}</strong> · ${L("hist.staked","Staked")}: <strong>${item.points_used.toLocaleString()} ${L("unit.pts","pts")}</strong>${odds ? ` · ${L("hist.odds","Odds")}: <strong>${odds.toFixed(2)}x</strong>` : ""}</p>
+          ${item.result ? `<p style="color:#aaa;font-size:0.82rem;">${L("card.result","Result")}: ${resultText}</p>` : ""}
           ${payoutLine}
           <p style="color:${statusColor};font-weight:bold;">${statusText}</p>
         </div>
@@ -2003,23 +2005,23 @@ async function showUserHistory(username) {
       const rnet = Number(roulette.net) || 0;
       const rcolor = rnet > 0 ? "#22c55e" : (rnet < 0 ? "#ef4444" : "#aaa");
       const rsign = rnet > 0 ? "+" : "";
-      rouletteLine = `<span style="color:${rcolor}">🎰 Roulette ${rsign}${rnet.toLocaleString()} (${roulette.spins} spin${roulette.spins === 1 ? "" : "s"})</span>`;
+      rouletteLine = `<span style="color:${rcolor}">🎰 ${L("rou.title","Roulette")} ${rsign}${rnet.toLocaleString()} (${roulette.spins} ${L("rpnl.spins","spin"+(roulette.spins===1?"":"s"))})</span>`;
     }
 
     statBox.innerHTML = `
       <div class="user-history-summary">
-        <span>✅ ${wins} correct</span>
-        <span>❌ ${losses} wrong</span>
-        <span>📊 R:R ${rrRatio ? rrRatio + ':1' : '—'}</span>
-        <span style="color:${roiVal !== null ? (parseFloat(roiVal) >= 0 ? '#22c55e' : '#ef4444') : '#aaa'}">💹 ROI ${roiVal !== null ? (parseFloat(roiVal) >= 0 ? '+' : '') + roiVal + '%' : '—'}</span>
-        <span>🎯 ${rate}% accuracy</span>
+        <span>✅ ${wins} ${L("hist.correct","correct")}</span>
+        <span>❌ ${losses} ${L("hist.wrong","wrong")}</span>
+        <span>📊 ${L("hist.rr","R:R")} ${rrRatio ? rrRatio + ':1' : '—'}</span>
+        <span style="color:${roiVal !== null ? (parseFloat(roiVal) >= 0 ? '#22c55e' : '#ef4444') : '#aaa'}">💹 ${L("hist.roi","ROI")} ${roiVal !== null ? (parseFloat(roiVal) >= 0 ? '+' : '') + roiVal + '%' : '—'}</span>
+        <span>🎯 ${rate}% ${L("hist.accuracy","accuracy")}</span>
         <span>💰 ${Number(user.points).toLocaleString()} ${L("unit.pts","pts")}</span>
         ${rouletteLine}
       </div>
     `;
 
     if (history.length === 0 && (!roulette || roulette.spins === 0)) {
-      listBox.innerHTML = "<p>No settled bets yet.</p>";
+      listBox.innerHTML = `<p class="empty-state">${L("empty.settledBets","No settled bets yet.")}</p>`;
       return;
     }
 
@@ -2030,9 +2032,10 @@ async function showUserHistory(username) {
 
       const type = (item.bet_type || "moneyline").toLowerCase();
       const line = item.total_line ? parseFloat(item.total_line) : 2.5;
-      let pickLabel = item.selected_team;
-      if (type === "total") pickLabel = `Total ${item.selected_team === "OVER" ? "Over" : "Under"} ${line}`;
-      else if (type === "btts") pickLabel = `BTTS ${item.selected_team === "YES" ? "Yes" : "No"}`;
+      let pickLabel = teamFullName(item.selected_team);
+      if (type === "total") pickLabel = `${L("bet.total","Total")} ${item.selected_team === "OVER" ? L("bet.totalOver","Over") : L("bet.totalUnder","Under")} ${line}`;
+      else if (type === "btts") pickLabel = `${L("bet.btts","BTTS")} ${item.selected_team === "YES" ? L("bet.yes","Yes") : L("bet.no","No")}`;
+      else if (item.selected_team === "DRAW") pickLabel = L("bet.draw","Draw");
       let resultText = item.result;
       if (type !== "moneyline" && item.result) {
         const m = item.settlement_message && item.settlement_message.match(/\((\d+)\s*-\s*(\d+)\)/);
@@ -2040,13 +2043,13 @@ async function showUserHistory(username) {
       }
 
       let color = "#ef4444";
-      let label = "❌ Wrong";
+      let label = `❌ ${L("hist.wrong","Wrong")}`;
       if (isCorrect) {
         color = "#22c55e";
-        label = isDraw ? "✅ Correct (Draw)" : "✅ Correct";
+        label = isDraw ? `✅ ${L("hist.correctDraw","Correct (Draw)")}` : `✅ ${L("hist.correct","Correct")}`;
       } else if (isRefund) {
         color = "#facc15";
-        label = "↩ Refunded";
+        label = `↩ ${L("bet.refund","Refunded")}`;
       }
 
       const odds = item.odds_used ? parseFloat(item.odds_used) : null;
@@ -2058,16 +2061,16 @@ async function showUserHistory(username) {
       });
 
       let outcomeLine;
-      if (isCorrect) outcomeLine = `<p style="color:#22c55e;font-weight:bold;">Won ${payout.toLocaleString()} ${L("unit.pts","pts")} (+${profit.toLocaleString()} profit)</p>`;
-      else if (isRefund) outcomeLine = `<p style="color:#facc15;font-weight:bold;">Refunded ${item.points_used.toLocaleString()} ${L("unit.pts","pts")}</p>`;
-      else outcomeLine = `<p style="color:#ef4444;font-weight:bold;">Lost ${item.points_used.toLocaleString()} ${L("unit.pts","pts")}</p>`;
+      if (isCorrect) outcomeLine = `<p style="color:#22c55e;font-weight:bold;">${L("hist.won","Won")} ${payout.toLocaleString()} ${L("unit.pts","pts")} (+${profit.toLocaleString()} ${L("hist.profit","profit")})</p>`;
+      else if (isRefund) outcomeLine = `<p style="color:#facc15;font-weight:bold;">${L("bet.refund","Refunded")} ${item.points_used.toLocaleString()} ${L("unit.pts","pts")}</p>`;
+      else outcomeLine = `<p style="color:#ef4444;font-weight:bold;">${L("hist.lost","Lost")} ${item.points_used.toLocaleString()} ${L("unit.pts","pts")}</p>`;
 
       return `
         <div class="match-item">
           <h4>${teamPair(item.team_a, item.team_b)}</h4>
           <p style="font-size:0.82rem;color:#aaa;">${item.stage}${item.group_name ? " · " + item.group_name : ""} · ${matchDate}</p>
-          <p>Pick: <strong>${pickLabel}</strong> · ${item.points_used.toLocaleString()} ${L("unit.pts","pts")}${odds ? ` @ ${odds.toFixed(2)}x` : ""}</p>
-          <p style="color:#aaa;font-size:0.82rem;">Result: ${resultText}</p>
+          <p>${L("hist.pick","Pick")}: <strong>${pickLabel}</strong> · ${item.points_used.toLocaleString()} ${L("unit.pts","pts")}${odds ? ` @ ${odds.toFixed(2)}x` : ""}</p>
+          <p style="color:#aaa;font-size:0.82rem;">${L("card.result","Result")}: ${resultText}</p>
           ${outcomeLine}
           <p style="color:${color};font-weight:bold;">${label}</p>
         </div>
@@ -2075,7 +2078,7 @@ async function showUserHistory(username) {
     }).join("");
 
   } catch (err) {
-    listBox.innerHTML = "<p>Failed to load history.</p>";
+    listBox.innerHTML = `<p class="empty-state">${L("empty.historyFail","Failed to load history.")}</p>`;
     console.log("User history error:", err);
   }
 }
@@ -2370,7 +2373,7 @@ async function loadActiveBets() {
           const payout = b.odds_used ? Math.floor(b.points_used * b.odds_used) : 0;
           const profit = payout - b.points_used;
           return `<div class="abet-leg ${isSide ? "abet-leg-side" : "abet-leg-main"}">
-            <span class="abet-leg-pick">${isSide ? "↳ " : ""}${legLabel(b, isKO, line)}</span>
+            <span class="abet-leg-pick">${isSide ? '<span class="abet-side-arrow">↳</span> ' : ""}${legLabel(b, isKO, line)}</span>
             <span class="abet-leg-stake">${b.points_used.toLocaleString()} @ ${odds}</span>
             <span class="abet-leg-win">→ ${b.odds_used ? payout.toLocaleString() : "—"}${b.odds_used ? `<span class="abet-profit"> (+${profit.toLocaleString()})</span>` : ""}</span>
           </div>`;
@@ -2378,7 +2381,7 @@ async function loadActiveBets() {
 
         return `<div class="abet-player-block">
           <div class="abet-player-head"><strong>${username}</strong>
-            <span class="abet-player-meta">${legs.length} bet${legs.length > 1 ? "s" : ""} · ${playerStake.toLocaleString()} ${L("unit.pts","pts")}</span>
+            <span class="abet-player-meta">${legs.length} ${L("live.betsCount","bet"+(legs.length>1?"s":""))} · ${playerStake.toLocaleString()} ${L("unit.pts","pts")}</span>
           </div>
           ${legRows}
         </div>`;
@@ -2771,6 +2774,17 @@ function setLang(lang) {
       el.innerHTML = orig;
     }
   });
+
+  // Re-render dynamic views so their JS-generated strings pick up the new lang.
+  // Only fires after initial dashboard load (skipped during login page).
+  if (document.getElementById("dashboardPage") &&
+      !document.getElementById("dashboardPage").classList.contains("hidden")) {
+    try { if (typeof loadLeaderboard === "function") loadLeaderboard(); } catch (e) {}
+    try { if (typeof loadMatches === "function") loadMatches(true); } catch (e) {}
+    try { if (typeof loadPredictionHistory === "function") loadPredictionHistory(); } catch (e) {}
+    // Live bets / stats / roulette outcome pill get refreshed the next time
+    // they're opened; re-fetching them all here would thrash the API.
+  }
 }
 
 // Apply saved language preference on load.
@@ -2918,6 +2932,41 @@ if (window.AJA_I18N && window.AJA_I18N.ar) {
     "rank.contender":    "منافس 🟢",
     "rank.amateur":      "هاوٍ 🟡",
     "rank.rookie":       "مبتدئ ⚪",
+
+    // ── Leaderboard row extras ───────────────────────────────────────
+    "lb.inPlay":         "في اللعب",
+    "lb.viewHistory":    "عرض سجل",
+    "lb.cashEligible":   "مؤهل لجوائز نقدية",
+
+    // ── History (own + user modal) ───────────────────────────────────
+    "hist.pick":         "الاختيار",
+    "hist.staked":       "المُراهن",
+    "hist.odds":         "الاحتمالات",
+    "hist.won":          "ربح",
+    "hist.lost":         "خسر",
+    "hist.correct":      "صحيح",
+    "hist.wrong":        "خاطئ",
+    "hist.correctDraw":  "صحيح (تعادل)",
+    "hist.profit":       "ربح",
+    "hist.refunded":     "استرداد الرهان",
+    "hist.rr":           "المخاطرة:العائد",
+    "hist.roi":          "العائد",
+    "hist.accuracy":     "الدقة",
+
+    // ── Card labels used across screens ──────────────────────────────
+    "card.result":       "النتيجة",
+
+    // ── Roulette P&L card ────────────────────────────────────────────
+    "rpnl.spins":        "دورة",
+    "rpnl.won":          "فائزة",
+    "rpnl.wagered":      "مُراهن",
+    "rpnl.up":           "ربح",
+    "rpnl.down":         "خسارة",
+    "rpnl.even":         "متعادل",
+
+    // ── Empty / failure states ───────────────────────────────────────
+    "empty.settledBets": "لا توجد رهانات مسواة بعد.",
+    "empty.historyFail": "تعذّر تحميل السجل.",
 
     // ── Bet-builder markets & intro ──────────────────────────────────
     "bb.intro":          "اختر الرهانات، وحدّد المبلغ لكل واحد، ثم قم بوضعها جميعاً.",
