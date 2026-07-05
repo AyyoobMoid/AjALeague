@@ -61,6 +61,74 @@ function animateStagger(els, opts = {}) {
   });
 }
 
+// Fade + slide a section IN when it's revealed. Sections use position:relative
+// (no centering transform), so animating transform here is safe.
+function animateSectionIn(el) {
+  if (!el || !hasAnime()) return;
+  anime.remove(el);                 // cancel any prior animation on this element
+  anime({
+    targets: el,
+    translateY: [8, 0],
+    opacity: [0, 1],
+    duration: 320,
+    easing: "easeOutCubic",
+  });
+}
+
+// Bet-placed confirmation moment: a green checkmark pops in over the builder,
+// holds briefly, then fades. Non-blocking — the rest of the flow keeps running.
+function animateBetPlacedConfirm(matchId, count) {
+  if (!hasAnime()) return;
+  const anchor = document.getElementById(`bet-builder-${matchId}`) ||
+                 document.getElementById(`match-${matchId}`) || document.body;
+  const rect = anchor.getBoundingClientRect();
+  const overlay = document.createElement("div");
+  overlay.className = "bet-confirm-flash";
+  overlay.innerHTML = `
+    <svg class="bet-confirm-check" viewBox="0 0 52 52" aria-hidden="true">
+      <circle class="bcc-ring" cx="26" cy="26" r="23" fill="none" stroke-width="3"/>
+      <path class="bcc-tick" fill="none" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"
+            d="M14 27 l8 8 l16 -18"/>
+    </svg>
+    <div class="bet-confirm-label">${count} bet${count > 1 ? "s" : ""} placed</div>
+  `;
+  // anchor absolutely over the builder card (center)
+  overlay.style.position = "fixed";
+  overlay.style.top = `${rect.top + rect.height / 2}px`;
+  overlay.style.left = `${rect.left + rect.width / 2}px`;
+  overlay.style.transform = "translate(-50%, -50%)";
+  overlay.style.zIndex = "9999";
+  overlay.style.pointerEvents = "none";
+  document.body.appendChild(overlay);
+
+  const tl = anime.timeline({
+    complete: () => overlay.remove(),
+  });
+  // ring & tick draw in
+  tl.add({
+    targets: overlay.querySelector(".bcc-ring"),
+    strokeDashoffset: [anime.setDashoffset, 0],
+    duration: 380, easing: "easeOutCubic",
+  }).add({
+    targets: overlay.querySelector(".bcc-tick"),
+    strokeDashoffset: [anime.setDashoffset, 0],
+    duration: 260, easing: "easeOutCubic",
+  }, "-=180")
+  .add({
+    targets: overlay,
+    scale: [{ value: 1.08, duration: 180, easing: "easeOutQuad" },
+            { value: 1,    duration: 160, easing: "easeInOutQuad" }],
+  }, "-=200")
+  .add({
+    targets: overlay,
+    opacity: [1, 0],
+    translateY: [0, -14],
+    duration: 380,
+    easing: "easeInCubic",
+    delay: 520,     // hold moment before fading
+  });
+}
+
 // Returns true if a match's stage is a knockout round (two-way "to advance"
 // market, no Draw button). Mirrors the backend isKnockoutStage().
 function isKnockout(stage) {
@@ -444,8 +512,10 @@ async function bbPlace(matchId) {
 
   if (placed.length > 0) playSound('predictSound');
   if (failed.length === 0) {
+    animateBetPlacedConfirm(matchId, placed.length);
     showNotification(`${placed.length} bet${placed.length > 1 ? 's' : ''} placed on this match!`);
   } else if (placed.length > 0) {
+    animateBetPlacedConfirm(matchId, placed.length);
     showNotification(`${placed.length} placed, ${failed.length} failed: ${failed[0].msg}`);
   } else {
     alert('Bets failed: ' + failed[0].msg);
@@ -557,6 +627,7 @@ function showMatchesSection() {
   const section = document.getElementById("matchesSection");
   section.classList.remove("hidden");
 
+  animateSectionIn(section);
   loadMatches();
   section.scrollIntoView({ behavior: "smooth" });
 }
@@ -571,6 +642,7 @@ function showRouletteSection() {
   hideAllDashboardSections();
   const section = document.getElementById("rouletteSection");
   section.classList.remove("hidden");
+  animateSectionIn(section);
   rResetControls();
   section.scrollIntoView({ behavior: "smooth" });
 }
@@ -840,6 +912,7 @@ function showHistorySection() {
   const section = document.getElementById("historySection");
   section.classList.remove("hidden");
 
+  animateSectionIn(section);
   loadPredictionHistory();
   section.scrollIntoView({ behavior: "smooth" });
 }
@@ -1454,6 +1527,14 @@ if (match.result) {
       `;
     });
 
+    // Stagger cards in — but only when the list actually changes (not on
+    // background refreshes), same pattern as leaderboard to avoid lag.
+    const currentFp = data.map(m => `${m.id}:${m.status}:${m.result || ''}`).join("|");
+    if (window._matchesFp !== currentFp) {
+      window._matchesFp = currentFp;
+      animateStagger(box.querySelectorAll(".match-item"), { stagger: 40, dy: 12 });
+    }
+
 }
 
 async function loadPredictionHistory() {
@@ -1709,6 +1790,7 @@ function showStatsSection() {
   const section = document.getElementById("statsSection");
   section.classList.remove("hidden");
 
+  animateSectionIn(section);
   loadProfileStats();
   section.scrollIntoView({ behavior: "smooth" });
 }
@@ -1806,6 +1888,7 @@ function showLeaderboardSection() {
   const section = document.getElementById("leaderboardSection");
   section.classList.remove("hidden");
 
+  animateSectionIn(section);
   loadLeaderboard();
   section.scrollIntoView({ behavior: "smooth" });
 }
