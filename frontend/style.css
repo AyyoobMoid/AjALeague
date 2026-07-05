@@ -2495,3 +2495,39 @@ input[type="number"]::-webkit-outer-spin-button { -webkit-appearance: none; marg
 /* Roulette wrap centering on all viewports */
 .roulette-wrap { display: flex; flex-direction: column; align-items: stretch; }
 .roulette-stage { align-self: center; }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   FIX: Arabic nav labels + pts unit overflow
+   Long Arabic words in narrow spaces caused mid-character truncation.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* Nav labels: overflow ellipsis at end, never mid-character */
+.bottom-nav .nav-btn span {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 10px;
+  line-height: 1.2;
+  text-align: center;
+}
+[dir="rtl"] .bottom-nav .nav-btn span {
+  /* Ensure Arabic labels don't get shape-clipped at wrong end */
+  direction: rtl;
+  unicode-bidi: embed;
+}
+
+/* Balance card 'pts' unit: give it enough room for the Arabic word */
+.balance-num .unit {
+  white-space: nowrap;
+  display: inline-block;
+}
+[dir="rtl"] .balance-num .unit { margin-left: 0; margin-right: 6px; }
+
+/* Leaderboard tier badges: don't clip Arabic tier names */
+.leaderboard-item .leader-info small {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}

@@ -162,25 +162,37 @@ function marketsFor(match) {
   const isKO = isKnockout(match.stage);
   const markets = [];
 
+  // Small helper: pull a localized string with English fallback
+  const L = (key, en) => {
+    const lang = localStorage.getItem("aja_lang") || "en";
+    const dict = (lang === "ar" && window.AJA_I18N && window.AJA_I18N.ar) ? window.AJA_I18N.ar : null;
+    return (dict && dict[key]) || en;
+  };
+
   // Match result / advance
   const mlReady = isKO
     ? (match.odds_a && match.odds_b && +match.odds_a > 0 && +match.odds_b > 0)
     : (match.odds_a && match.odds_draw && match.odds_b && +match.odds_a > 0 && +match.odds_draw > 0 && +match.odds_b > 0);
   if (mlReady) {
-    const opts = [{ label: match.team_a + (isKO ? ' to advance' : ''), val: match.team_a, odds: +match.odds_a }];
-    if (!isKO) opts.push({ label: 'Draw', val: 'DRAW', odds: +match.odds_draw });
-    opts.push({ label: match.team_b + (isKO ? ' to advance' : ''), val: match.team_b, odds: +match.odds_b });
-    markets.push({ key: 'moneyline', title: isKO ? 'To Advance' : 'Match Result', options: opts });
+    const advance = L("bet.toAdvance", "to advance");
+    const advSuffix = isKO ? ' ' + advance : '';
+    const opts = [{ label: teamFullName(match.team_a) + advSuffix, val: match.team_a, odds: +match.odds_a }];
+    if (!isKO) opts.push({ label: L("bet.draw", "Draw"), val: 'DRAW', odds: +match.odds_draw });
+    opts.push({ label: teamFullName(match.team_b) + advSuffix, val: match.team_b, odds: +match.odds_b });
+    const title = isKO ? L("market.advance", "To Advance") : L("market.result", "Match Result");
+    markets.push({ key: 'moneyline', title, options: opts });
   }
 
   // Total goals (Over/Under)
   if (match.odds_over && match.odds_under && +match.odds_over > 0 && +match.odds_under > 0) {
     const line = match.total_line ? +match.total_line : 2.5;
     markets.push({
-      key: 'total', title: 'Total Goals', subtitle: 'Over/Under ' + line,
+      key: 'total',
+      title: L("market.total", "Total Goals"),
+      subtitle: L("market.totalSub", "Over/Under ") + line,
       options: [
-        { label: 'Over ' + line, val: 'OVER', odds: +match.odds_over },
-        { label: 'Under ' + line, val: 'UNDER', odds: +match.odds_under }
+        { label: L("bet.totalOver", "Over") + ' ' + line, val: 'OVER', odds: +match.odds_over },
+        { label: L("bet.totalUnder", "Under") + ' ' + line, val: 'UNDER', odds: +match.odds_under }
       ]
     });
   }
@@ -188,10 +200,12 @@ function marketsFor(match) {
   // Both teams to score
   if (match.odds_btts_yes && match.odds_btts_no && +match.odds_btts_yes > 0 && +match.odds_btts_no > 0) {
     markets.push({
-      key: 'btts', title: 'Both Teams To Score', subtitle: 'Yes/No',
+      key: 'btts',
+      title: L("market.btts", "Both Teams To Score"),
+      subtitle: L("bet.yes", "Yes") + '/' + L("bet.no", "No"),
       options: [
-        { label: 'Yes', val: 'YES', odds: +match.odds_btts_yes },
-        { label: 'No', val: 'NO', odds: +match.odds_btts_no }
+        { label: L("bet.yes", "Yes"), val: 'YES', odds: +match.odds_btts_yes },
+        { label: L("bet.no", "No"),   val: 'NO',  odds: +match.odds_btts_no }
       ]
     });
   }
@@ -250,7 +264,7 @@ function renderBetBuilder(match) {
 
   return `
   <div class="bet-builder" id="bet-builder-${match.id}" data-balance="${bal}">
-    <p class="bb-intro">Tick the bets you want, set an amount for each, then place them all at once.</p>
+    <p class="bb-intro">${L("bb.intro", "Tick the bets you want, set an amount for each, then place them all at once.")}</p>
     ${marketHtml}
     <div class="bb-receipt hidden" id="bb-receipt-${match.id}">
       <div class="bb-receipt-title">📋 Your slip</div>
@@ -417,13 +431,13 @@ function bbRecalc(matchId, activeKey) {
     }
 
     const valEl = document.getElementById(`bb-val-${matchId}-${key}`);
-    if (valEl) valEl.textContent = `${amt.toLocaleString()} pts`;
+    if (valEl) valEl.textContent = `${amt.toLocaleString()} ${L("unit.pts","pts")}`;
 
     const payEl = document.getElementById(`bb-pay-${matchId}-${key}`);
     if (payEl) {
       if (leg.pick && amt > 0) {
         const legRet = Math.floor(amt * leg.odds);
-        payEl.innerHTML = `${leg.label} @ ${leg.odds.toFixed(2)}x → <strong>${legRet.toLocaleString()} pts</strong>`;
+        payEl.innerHTML = `${leg.label} @ ${leg.odds.toFixed(2)}x → <strong>${legRet.toLocaleString()} ${L("unit.pts","pts")}</strong>`;
         payEl.style.display = 'block';
       } else if (amt > 0 && !leg.pick) {
         payEl.innerHTML = `Pick an option above`;
@@ -439,7 +453,7 @@ function bbRecalc(matchId, activeKey) {
       const ret = Math.floor(amt * leg.odds);
       totalStake += amt;
       totalReturn += ret;
-      lines.push(`<div class="bb-rcpt-line"><span>${leg.label} @ ${leg.odds.toFixed(2)}x · ${amt.toLocaleString()} pts</span><span class="bb-rcpt-win">→ ${ret.toLocaleString()}</span></div>`);
+      lines.push(`<div class="bb-rcpt-line"><span>${leg.label} @ ${leg.odds.toFixed(2)}x · ${amt.toLocaleString()} ${L("unit.pts","pts")}</span><span class="bb-rcpt-win">→ ${ret.toLocaleString()}</span></div>`);
     } else if (leg.pick && amt === 0) {
       anyInvalid = true; // ticked + picked but no amount yet
     } else if (!leg.pick) {
@@ -706,7 +720,7 @@ function rSlide(v) {
   const val = rSnap(v, max);
   rState.amount = val;
   document.getElementById("rAmount").value = val === 0 ? "" : val;
-  document.getElementById("rStakeVal").textContent = `${val.toLocaleString()} pts`;
+  document.getElementById("rStakeVal").textContent = `${val.toLocaleString()} ${L("unit.pts","pts")}`;
   rUpdateSpinBtn();
 }
 
@@ -717,7 +731,7 @@ function rType(v) {
   rState.amount = val;
   slider.value = val;
   rPaintSlider(slider);
-  document.getElementById("rStakeVal").textContent = `${val.toLocaleString()} pts`;
+  document.getElementById("rStakeVal").textContent = `${val.toLocaleString()} ${L("unit.pts","pts")}`;
   rUpdateSpinBtn();
 }
 
@@ -729,7 +743,7 @@ function rAdd(inc) {
   slider.value = val;
   rPaintSlider(slider);
   document.getElementById("rAmount").value = val === 0 ? "" : val;
-  document.getElementById("rStakeVal").textContent = `${val.toLocaleString()} pts`;
+  document.getElementById("rStakeVal").textContent = `${val.toLocaleString()} ${L("unit.pts","pts")}`;
   rUpdateSpinBtn();
 }
 
@@ -750,7 +764,7 @@ function rUpdateSpinBtn() {
   if (!rState.color) { btn.disabled = true; btn.textContent = "Pick a colour"; return; }
   if (rState.amount < 5) { btn.disabled = true; btn.textContent = "Set a stake (min 5)"; return; }
   btn.disabled = false;
-  btn.textContent = `Spin for ${rState.amount.toLocaleString()} pts`;
+  btn.textContent = `Spin for ${rState.amount.toLocaleString()} ${L("unit.pts","pts")}`;
 }
 
 // ── Web Audio sound (no external files — synthesised) ──
@@ -879,7 +893,7 @@ async function rSpin() {
     } else {
       rPlayLose();
       out.className = "roulette-outcome roulette-lose";
-      out.innerHTML = `Landed <strong>${data.result.toUpperCase()}</strong> — lost ${rState.amount.toLocaleString()} pts. Try again!`;
+      out.innerHTML = `Landed <strong>${data.result.toUpperCase()}</strong> — lost ${rState.amount.toLocaleString()} ${L("unit.pts","pts")}. Try again!`;
     }
     out.classList.remove("hidden");
     animatePop(out, { from: 0.9, duration: 300 });
@@ -935,27 +949,31 @@ let leaderboardPoints = []; // populated when leaderboard loads
 
 function getRank(points) {
   points = Number(points);
+  // Rank labels are keyed for i18n; the emoji is the same in both languages.
+  const label = (key, en) => {
+    const lang = localStorage.getItem("aja_lang") || "en";
+    const dict = (lang === "ar" && window.AJA_I18N && window.AJA_I18N.ar) ? window.AJA_I18N.ar : null;
+    return (dict && dict[key]) || en;
+  };
   if (!leaderboardPoints.length) {
-    // Fallback to points-based if no leaderboard data yet
-    if (points >= 50000) return "Legend 👑";
-    if (points >= 20000) return "Elite ⭐";
-    if (points >= 10000) return "Pro 🔵";
-    if (points >= 5000) return "Contender 🟢";
-    if (points >= 2000) return "Amateur 🟡";
-    return "Rookie ⚪";
+    if (points >= 50000) return label("rank.legend", "Legend 👑");
+    if (points >= 20000) return label("rank.elite", "Elite ⭐");
+    if (points >= 10000) return label("rank.pro", "Pro 🔵");
+    if (points >= 5000)  return label("rank.contender", "Contender 🟢");
+    if (points >= 2000)  return label("rank.amateur", "Amateur 🟡");
+    return label("rank.rookie", "Rookie ⚪");
   }
 
   const total = leaderboardPoints.length;
-  // Find how many players this person beats (rank from bottom)
   const beatenBy = leaderboardPoints.filter(p => p > points).length;
-  const percentile = (beatenBy / total) * 100; // % of players above you
+  const percentile = (beatenBy / total) * 100;
 
-  if (percentile < 5)   return "Legend 👑";
-  if (percentile < 15)  return "Elite ⭐";
-  if (percentile < 30)  return "Pro 🔵";
-  if (percentile < 50)  return "Contender 🟢";
-  if (percentile < 75)  return "Amateur 🟡";
-  return "Rookie ⚪";
+  if (percentile < 5)   return label("rank.legend", "Legend 👑");
+  if (percentile < 15)  return label("rank.elite", "Elite ⭐");
+  if (percentile < 30)  return label("rank.pro", "Pro 🔵");
+  if (percentile < 50)  return label("rank.contender", "Contender 🟢");
+  if (percentile < 75)  return label("rank.amateur", "Amateur 🟡");
+  return label("rank.rookie", "Rookie ⚪");
 }
 
 function updateDashboardUser(username, points) {
@@ -1428,7 +1446,7 @@ if (match.result) {
   // Has bets and window still open → show placed-bets receipt + cancel/rebuild.
   actionHtml = `
   <div class="countdown-box">
-    <span>Predictions close in:</span>
+    <span>${L("card.closesIn", "Predictions close in")}:</span>
     <strong id="timer-${match.id}">${getCountdown(closeTime)}</strong>
   </div>
   <div class="prediction-box">
@@ -1458,7 +1476,7 @@ if (match.result) {
   // Match is open by time, but odds haven't been set yet — don't allow betting on placeholders
   actionHtml = `
   <div class="countdown-box">
-    <span>Predictions close in:</span>
+    <span>${L("card.closesIn", "Predictions close in")}:</span>
     <strong id="timer-${match.id}">${getCountdown(closeTime)}</strong>
   </div>
   <div class="odds-pending-box">
@@ -1472,7 +1490,7 @@ if (match.result) {
   // Open, odds ready, no bets yet → the BET BUILDER.
   actionHtml = `
   <div class="countdown-box">
-    <span>Predictions close in:</span>
+    <span>${L("card.closesIn", "Predictions close in")}:</span>
     <strong id="timer-${match.id}">${getCountdown(closeTime)}</strong>
   </div>
   <div class="prediction-box">
@@ -1523,12 +1541,12 @@ if (match.result) {
             <h4>${teamPair(match.team_a, match.team_b)}</h4>
 
             <p>
-              Stage: ${match.stage}
+              ${L("card.stage", "Stage")}: ${match.stage}
               ${match.group_name ? " - " + match.group_name : ""}
             </p>
 
             <p>
-              Time: ${timeText} UAE
+              ${L("card.time", "Time")}: ${timeText} ${L("card.uae", "UAE")}
             </p>
 
             ${actionHtml}
@@ -1645,23 +1663,23 @@ async function loadPredictionHistory() {
         statusColor = "#22c55e";
         statusText = "✅ Correct";
         const oddsStr = odds ? ` @ ${odds.toFixed(2)}x` : "";
-        payoutLine = `<p style="color:#22c55e;font-weight:bold;">Won ${payout.toLocaleString()} pts (+${profit.toLocaleString()} profit${oddsStr})</p>`;
+        payoutLine = `<p style="color:#22c55e;font-weight:bold;">Won ${payout.toLocaleString()} ${L("unit.pts","pts")} (+${profit.toLocaleString()} profit${oddsStr})</p>`;
       } else if (isRefund) {
         statusColor = "#facc15";
         statusText = "↩ Refunded";
-        payoutLine = `<p style="color:#facc15;font-weight:bold;">Stake refunded: ${item.points_used.toLocaleString()} pts</p>`;
+        payoutLine = `<p style="color:#facc15;font-weight:bold;">Stake refunded: ${item.points_used.toLocaleString()} ${L("unit.pts","pts")}</p>`;
       } else if (isWrong) {
         statusColor = "#ef4444";
         statusText = "❌ Wrong";
         const oddsStr = odds ? ` @ ${odds.toFixed(2)}x` : "";
-        payoutLine = `<p style="color:#ef4444;font-weight:bold;">Lost ${item.points_used.toLocaleString()} pts${oddsStr}</p>`;
+        payoutLine = `<p style="color:#ef4444;font-weight:bold;">Lost ${item.points_used.toLocaleString()} ${L("unit.pts","pts")}${oddsStr}</p>`;
       }
 
       box.innerHTML += `
         <div class="match-item">
           <h4>${teamPair(item.team_a, item.team_b)}</h4>
           <p style="font-size:0.82rem;color:#aaa;">${item.stage}${item.group_name ? " · " + item.group_name : ""} · ${matchDate}</p>
-          <p>Pick: <strong>${pickLabel}</strong> · Staked: <strong>${item.points_used.toLocaleString()} pts</strong>${odds ? ` · Odds: <strong>${odds.toFixed(2)}x</strong>` : ""}</p>
+          <p>Pick: <strong>${pickLabel}</strong> · Staked: <strong>${item.points_used.toLocaleString()} ${L("unit.pts","pts")}</strong>${odds ? ` · Odds: <strong>${odds.toFixed(2)}x</strong>` : ""}</p>
           ${item.result ? `<p style="color:#aaa;font-size:0.82rem;">Result: ${resultText}</p>` : ""}
           ${payoutLine}
           <p style="color:${statusColor};font-weight:bold;">${statusText}</p>
@@ -1995,7 +2013,7 @@ async function showUserHistory(username) {
         <span>📊 R:R ${rrRatio ? rrRatio + ':1' : '—'}</span>
         <span style="color:${roiVal !== null ? (parseFloat(roiVal) >= 0 ? '#22c55e' : '#ef4444') : '#aaa'}">💹 ROI ${roiVal !== null ? (parseFloat(roiVal) >= 0 ? '+' : '') + roiVal + '%' : '—'}</span>
         <span>🎯 ${rate}% accuracy</span>
-        <span>💰 ${Number(user.points).toLocaleString()} pts</span>
+        <span>💰 ${Number(user.points).toLocaleString()} ${L("unit.pts","pts")}</span>
         ${rouletteLine}
       </div>
     `;
@@ -2040,15 +2058,15 @@ async function showUserHistory(username) {
       });
 
       let outcomeLine;
-      if (isCorrect) outcomeLine = `<p style="color:#22c55e;font-weight:bold;">Won ${payout.toLocaleString()} pts (+${profit.toLocaleString()} profit)</p>`;
-      else if (isRefund) outcomeLine = `<p style="color:#facc15;font-weight:bold;">Refunded ${item.points_used.toLocaleString()} pts</p>`;
-      else outcomeLine = `<p style="color:#ef4444;font-weight:bold;">Lost ${item.points_used.toLocaleString()} pts</p>`;
+      if (isCorrect) outcomeLine = `<p style="color:#22c55e;font-weight:bold;">Won ${payout.toLocaleString()} ${L("unit.pts","pts")} (+${profit.toLocaleString()} profit)</p>`;
+      else if (isRefund) outcomeLine = `<p style="color:#facc15;font-weight:bold;">Refunded ${item.points_used.toLocaleString()} ${L("unit.pts","pts")}</p>`;
+      else outcomeLine = `<p style="color:#ef4444;font-weight:bold;">Lost ${item.points_used.toLocaleString()} ${L("unit.pts","pts")}</p>`;
 
       return `
         <div class="match-item">
           <h4>${teamPair(item.team_a, item.team_b)}</h4>
           <p style="font-size:0.82rem;color:#aaa;">${item.stage}${item.group_name ? " · " + item.group_name : ""} · ${matchDate}</p>
-          <p>Pick: <strong>${pickLabel}</strong> · ${item.points_used.toLocaleString()} pts${odds ? ` @ ${odds.toFixed(2)}x` : ""}</p>
+          <p>Pick: <strong>${pickLabel}</strong> · ${item.points_used.toLocaleString()} ${L("unit.pts","pts")}${odds ? ` @ ${odds.toFixed(2)}x` : ""}</p>
           <p style="color:#aaa;font-size:0.82rem;">Result: ${resultText}</p>
           ${outcomeLine}
           <p style="color:${color};font-weight:bold;">${label}</p>
@@ -2134,9 +2152,9 @@ async function confirmBet(matchId, isUpdate = false, betType = "moneyline") {
   const action = isUpdate ? "update your bet to" : "place a bet of";
   const confirmed = confirm(
     `⚠️ Confirm Bet\n\n` +
-    `You are about to ${action} ${pts.toLocaleString()} pts on ${bet.pick} at ${bet.odds}x odds.\n\n` +
-    `✅ If correct: you win ${potentialWin.toLocaleString()} pts (+${profit.toLocaleString()} profit)\n` +
-    `❌ If wrong: you lose ${pts.toLocaleString()} pts\n\n` +
+    `You are about to ${action} ${pts.toLocaleString()} ${L("unit.pts","pts")} on ${bet.pick} at ${bet.odds}x odds.\n\n` +
+    `✅ If correct: you win ${potentialWin.toLocaleString()} ${L("unit.pts","pts")} (+${profit.toLocaleString()} profit)\n` +
+    `❌ If wrong: you lose ${pts.toLocaleString()} ${L("unit.pts","pts")}\n\n` +
     `Are you sure?`
   );
   if (!confirmed) return;
@@ -2213,7 +2231,7 @@ async function confirmBet(matchId, isUpdate = false, betType = "moneyline") {
 async function adjustOdds(matchId, pick, newOdds, stake) {
   const token = localStorage.getItem("token");
   const newPayout = Math.floor(stake * newOdds);
-  if (!confirm(`Move your ${stake.toLocaleString()} pts to ${newOdds.toFixed(2)}x odds?\n\nNew payout if correct: ${newPayout.toLocaleString()} pts`)) return;
+  if (!confirm(`Move your ${stake.toLocaleString()} ${L("unit.pts","pts")} to ${newOdds.toFixed(2)}x odds?\n\nNew payout if correct: ${newPayout.toLocaleString()} ${L("unit.pts","pts")}`)) return;
 
   const res = await fetch(`${API}/update-predict`, {
     method: "POST",
@@ -2266,7 +2284,7 @@ async function cancelBet(matchId) {
       if (predictedMatches[i].match_id === matchId) predictedMatches.splice(i, 1);
     }
     const n = (typeof data.count === "number") ? data.count : myLegs.length;
-    showNotification(`Cancelled ${n} bet${n > 1 ? "s" : ""} — ${refund.toLocaleString()} pts refunded!`);
+    showNotification(`Cancelled ${n} bet${n > 1 ? "s" : ""} — ${refund.toLocaleString()} ${L("unit.pts","pts")} refunded!`);
     renderMatchCards(cachedMatches);
     loadLeaderboard();
     suppressNextPointsNotification = true;
@@ -2360,7 +2378,7 @@ async function loadActiveBets() {
 
         return `<div class="abet-player-block">
           <div class="abet-player-head"><strong>${username}</strong>
-            <span class="abet-player-meta">${legs.length} bet${legs.length > 1 ? "s" : ""} · ${playerStake.toLocaleString()} pts</span>
+            <span class="abet-player-meta">${legs.length} bet${legs.length > 1 ? "s" : ""} · ${playerStake.toLocaleString()} ${L("unit.pts","pts")}</span>
           </div>
           ${legRows}
         </div>`;
@@ -2377,7 +2395,7 @@ async function loadActiveBets() {
           </div>
           <div class="live-match-summary">
             <span class="live-summary-label">${t('live.staked', 'Total staked')}</span>
-            <span class="live-summary-val mono">${totalStake.toLocaleString()} pts</span>
+            <span class="live-summary-val mono">${totalStake.toLocaleString()} ${L("unit.pts","pts")}</span>
             <span class="live-summary-count">${betCount} ${t('live.betsCount', 'bet' + (betCount > 1 ? 's' : ''))}</span>
           </div>
           <div class="abet-players">${playerBlocks}</div>
@@ -2396,6 +2414,9 @@ function t(key, fallback) {
   const dict = (lang === "ar" && window.AJA_I18N && window.AJA_I18N.ar) ? window.AJA_I18N.ar : null;
   return (dict && dict[key]) || fallback;
 }
+// L is an alias for t — used interchangeably in template literals.
+// Both are hoisted function declarations so they work in any render context.
+function L(key, fallback) { return t(key, fallback); }
 
 
 // ─── AUTO LOGIN ON PAGE LOAD ─────────────────────────────────────────────────
@@ -2525,7 +2546,7 @@ async function showRecentResults() {
             <span><strong>${r.pick}</strong>${oddsStr} → <strong>${r.result}</strong></span>
             <span class="result-amount ${amtClass}">${amountStr}</span>
           </div>
-          <div class="result-stake">Stake ${r.stake.toLocaleString()} pts</div>
+          <div class="result-stake">Stake ${r.stake.toLocaleString()} ${L("unit.pts","pts")}</div>
         </div>
       `;
     });
@@ -2540,7 +2561,7 @@ async function showRecentResults() {
           <div class="results-net-bar ${netPositive ? 'net-pos' : 'net-neg'}">
             <div class="results-net-row">
               <span class="results-net-label">Net result</span>
-              <span class="results-net-total ${netPositive ? 'pos' : 'neg'}">${netSign}${totalProfit.toLocaleString()} pts</span>
+              <span class="results-net-total ${netPositive ? 'pos' : 'neg'}">${netSign}${totalProfit.toLocaleString()} ${L("unit.pts","pts")}</span>
             </div>
             <div class="results-net-row results-net-sub">
               <span><b>${wins}</b>/<b>${results.length}</b> correct · <b>${totalStaked.toLocaleString()}</b> staked</span>
@@ -2890,6 +2911,34 @@ function teamPair(a, b) {
 // ─── SIGNAL: extend Arabic dictionary with bet types + market names ─────────
 if (window.AJA_I18N && window.AJA_I18N.ar) {
   Object.assign(window.AJA_I18N.ar, {
+    // ── Rank tiers (used across leaderboard, balance card, stats) ────
+    "rank.legend":       "أسطورة 👑",
+    "rank.elite":        "نخبة ⭐",
+    "rank.pro":          "محترف 🔵",
+    "rank.contender":    "منافس 🟢",
+    "rank.amateur":      "هاوٍ 🟡",
+    "rank.rookie":       "مبتدئ ⚪",
+
+    // ── Bet-builder markets & intro ──────────────────────────────────
+    "bb.intro":          "اختر الرهانات، وحدّد المبلغ لكل واحد، ثم قم بوضعها جميعاً.",
+    "market.result":     "نتيجة المباراة",
+    "market.advance":    "التأهل",
+    "market.total":      "مجموع الأهداف",
+    "market.totalSub":   "أكثر / أقل من ",
+    "market.btts":       "الفريقان يسجلان",
+
+    // ── Match card labels (Stage / Time / Predictions close in) ──────
+    "card.stage":        "المرحلة",
+    "card.time":         "الوقت",
+    "card.closesIn":     "إغلاق التوقعات خلال",
+    "card.uae":          "بتوقيت الإمارات",
+
+    // ── The dreaded "pts" ────────────────────────────────────────────
+    // Kept short deliberately — long words like "نقاط" break narrow columns.
+    // Using "نقطة" (singular, functional) for all counts, matches conventions
+    // in Arabic scoring apps and fits in the same visual space.
+    "unit.pts":          "نقطة",
+
     // Bet types & markets (used in live-bets, history, results)
     "bet.matchWinner":   "الفائز بالمباراة",
     "bet.toAdvance":     "التأهل",
