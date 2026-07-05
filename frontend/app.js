@@ -100,7 +100,7 @@ function animateBetPlacedConfirm(matchId, count) {
       <path class="bcc-tick" fill="none" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"
             d="M14 27 l8 8 l16 -18"/>
     </svg>
-    <div class="bet-confirm-label">${count} ${Lp("live.betsCount", count, "bet")} ${L("conf.placed","placed")}</div>
+    <div class="bet-confirm-label">${Lpn("live.betsCount", count, "bet")} ${L("conf.placed","placed")}</div>
   `;
   // anchor absolutely over the builder card (center)
   overlay.style.position = "fixed";
@@ -1612,7 +1612,7 @@ async function loadPredictionHistory() {
               <span class="rpnl-icon">🎰</span>
               <div>
                 <div class="rpnl-title">${L("rou.title","Roulette")}</div>
-                <div class="rpnl-sub">${rs.spins} ${Lp("rpnl.spins", rs.spins, "spin")} · ${rs.wins} ${L("rpnl.won","won")} · ${rs.wagered.toLocaleString()} ${L("rpnl.wagered","wagered")}</div>
+                <div class="rpnl-sub">${Lpn("rpnl.spins", rs.spins, "spin")} · ${rs.wins} ${L("rpnl.won","won")} · ${rs.wagered.toLocaleString()} ${L("rpnl.wagered","wagered")}</div>
               </div>
             </div>
             <div class="rpnl-net">
@@ -2005,7 +2005,7 @@ async function showUserHistory(username) {
       const rnet = Number(roulette.net) || 0;
       const rcolor = rnet > 0 ? "#22c55e" : (rnet < 0 ? "#ef4444" : "#aaa");
       const rsign = rnet > 0 ? "+" : "";
-      rouletteLine = `<span style="color:${rcolor}">🎰 ${L("rou.title","Roulette")} ${rsign}${rnet.toLocaleString()} (${roulette.spins} ${Lp("rpnl.spins", roulette.spins, "spin")})</span>`;
+      rouletteLine = `<span style="color:${rcolor}">🎰 ${L("rou.title","Roulette")} ${rsign}${rnet.toLocaleString()} (${Lpn("rpnl.spins", roulette.spins, "spin")})</span>`;
     }
 
     statBox.innerHTML = `
@@ -2381,7 +2381,7 @@ async function loadActiveBets() {
 
         return `<div class="abet-player-block">
           <div class="abet-player-head"><strong>${username}</strong>
-            <span class="abet-player-meta">${legs.length} ${Lp("live.betsCount", legs.length, "bet")} · ${playerStake.toLocaleString()} ${L("unit.pts","pts")}</span>
+            <span class="abet-player-meta">${Lpn("live.betsCount", legs.length, "bet")} · ${playerStake.toLocaleString()} ${L("unit.pts","pts")}</span>
           </div>
           ${legRows}
         </div>`;
@@ -2399,7 +2399,7 @@ async function loadActiveBets() {
           <div class="live-match-summary">
             <span class="live-summary-label">${t('live.staked', 'Total staked')}</span>
             <span class="live-summary-val mono">${totalStake.toLocaleString()} ${L("unit.pts","pts")}</span>
-            <span class="live-summary-count">${betCount} ${Lp("live.betsCount", betCount, "bet")}</span>
+            <span class="live-summary-count">${Lpn("live.betsCount", betCount, "bet")}</span>
           </div>
           <div class="abet-players">${playerBlocks}</div>
         </div>
@@ -2421,7 +2421,7 @@ function t(key, fallback) {
 // Both are hoisted function declarations so they work in any render context.
 function L(key, fallback) { return t(key, fallback); }
 
-// Plural helper: pick the right form based on count.
+// Plural helper: pick the right noun form based on count.
 // English: singular for 1, plural for everything else (auto "s" via en fallback).
 // Arabic: 5 forms per CLDR — we handle the four that matter in practice:
 //   1        → base key (رهان)
@@ -2444,6 +2444,22 @@ function Lp(key, count, fallbackBase, fallbackPlural) {
   else if (n >= 3 && n <= 10) suffix = ".few";  // 3-10 plural
   else               suffix = ".many"; // 0, 11+ (falls back to singular form in tamyiz)
   return dict[key + suffix] || dict[key] || fallbackBase;
+}
+
+// Full phrase helper: returns "<count> <noun>" together, but in Arabic the
+// count is OMITTED for 1 and 2 because the noun form itself signals the count
+// (singular = 1, dual = 2). English always keeps the number.
+//   English: "1 bet",   "2 bets",  "3 bets",   "11 bets"
+//   Arabic:  "رهان",     "رهانان",  "٣ رهانات",  "١١ رهان" — but numerals we
+// keep in Western digits since you asked for that globally.
+function Lpn(key, count, fallbackBase, fallbackPlural) {
+  const lang = localStorage.getItem("aja_lang") || "en";
+  const noun = Lp(key, count, fallbackBase, fallbackPlural);
+  if (lang === "ar" && (count === 1 || count === 2)) {
+    // In Arabic, the noun form alone conveys the count for 1 and 2.
+    return noun;
+  }
+  return count + " " + noun;
 }
 
 
@@ -2584,7 +2600,7 @@ async function showRecentResults() {
         <div class="results-modal">
           <div class="results-header">
             <h2>While you were away</h2>
-            <p class="results-subtitle">${results.length} ${Lp("live.betsCount", results.length, "bet")} ${L("results.subtitleTail","settled since your last visit")}</p>
+            <p class="results-subtitle">${Lpn("live.betsCount", results.length, "bet")} ${L("results.subtitleTail","settled since your last visit")}</p>
           </div>
           <div class="results-net-bar ${netPositive ? 'net-pos' : 'net-neg'}">
             <div class="results-net-row">
