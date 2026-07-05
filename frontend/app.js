@@ -100,7 +100,7 @@ function animateBetPlacedConfirm(matchId, count) {
       <path class="bcc-tick" fill="none" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"
             d="M14 27 l8 8 l16 -18"/>
     </svg>
-    <div class="bet-confirm-label">${count} bet${count > 1 ? "s" : ""} placed</div>
+    <div class="bet-confirm-label">${count} ${Lp("live.betsCount", count, "bet")} ${L("conf.placed","placed")}</div>
   `;
   // anchor absolutely over the builder card (center)
   overlay.style.position = "fixed";
@@ -1612,7 +1612,7 @@ async function loadPredictionHistory() {
               <span class="rpnl-icon">🎰</span>
               <div>
                 <div class="rpnl-title">${L("rou.title","Roulette")}</div>
-                <div class="rpnl-sub">${rs.spins} ${L("rpnl.spins","spin"+(rs.spins===1?"":"s"))} · ${rs.wins} ${L("rpnl.won","won")} · ${rs.wagered.toLocaleString()} ${L("rpnl.wagered","wagered")}</div>
+                <div class="rpnl-sub">${rs.spins} ${Lp("rpnl.spins", rs.spins, "spin")} · ${rs.wins} ${L("rpnl.won","won")} · ${rs.wagered.toLocaleString()} ${L("rpnl.wagered","wagered")}</div>
               </div>
             </div>
             <div class="rpnl-net">
@@ -2005,7 +2005,7 @@ async function showUserHistory(username) {
       const rnet = Number(roulette.net) || 0;
       const rcolor = rnet > 0 ? "#22c55e" : (rnet < 0 ? "#ef4444" : "#aaa");
       const rsign = rnet > 0 ? "+" : "";
-      rouletteLine = `<span style="color:${rcolor}">🎰 ${L("rou.title","Roulette")} ${rsign}${rnet.toLocaleString()} (${roulette.spins} ${L("rpnl.spins","spin"+(roulette.spins===1?"":"s"))})</span>`;
+      rouletteLine = `<span style="color:${rcolor}">🎰 ${L("rou.title","Roulette")} ${rsign}${rnet.toLocaleString()} (${roulette.spins} ${Lp("rpnl.spins", roulette.spins, "spin")})</span>`;
     }
 
     statBox.innerHTML = `
@@ -2381,7 +2381,7 @@ async function loadActiveBets() {
 
         return `<div class="abet-player-block">
           <div class="abet-player-head"><strong>${username}</strong>
-            <span class="abet-player-meta">${legs.length} ${L("live.betsCount","bet"+(legs.length>1?"s":""))} · ${playerStake.toLocaleString()} ${L("unit.pts","pts")}</span>
+            <span class="abet-player-meta">${legs.length} ${Lp("live.betsCount", legs.length, "bet")} · ${playerStake.toLocaleString()} ${L("unit.pts","pts")}</span>
           </div>
           ${legRows}
         </div>`;
@@ -2399,7 +2399,7 @@ async function loadActiveBets() {
           <div class="live-match-summary">
             <span class="live-summary-label">${t('live.staked', 'Total staked')}</span>
             <span class="live-summary-val mono">${totalStake.toLocaleString()} ${L("unit.pts","pts")}</span>
-            <span class="live-summary-count">${betCount} ${t('live.betsCount', 'bet' + (betCount > 1 ? 's' : ''))}</span>
+            <span class="live-summary-count">${betCount} ${Lp("live.betsCount", betCount, "bet")}</span>
           </div>
           <div class="abet-players">${playerBlocks}</div>
         </div>
@@ -2420,6 +2420,31 @@ function t(key, fallback) {
 // L is an alias for t — used interchangeably in template literals.
 // Both are hoisted function declarations so they work in any render context.
 function L(key, fallback) { return t(key, fallback); }
+
+// Plural helper: pick the right form based on count.
+// English: singular for 1, plural for everything else (auto "s" via en fallback).
+// Arabic: 5 forms per CLDR — we handle the four that matter in practice:
+//   1        → base key (رهان)
+//   2        → key + ".2" (رهانان)  — dual
+//   3–10     → key + ".few" (رهانات) — plural of paucity
+//   11+ / 0  → key + ".many" (رهان) — singular tamyiz form
+// If a variant isn't in the dict, falls back to the base key.
+function Lp(key, count, fallbackBase, fallbackPlural) {
+  const lang = localStorage.getItem("aja_lang") || "en";
+  if (lang !== "ar") {
+    // English: 1 = singular, everything else = plural.
+    return count === 1 ? fallbackBase : (fallbackPlural || (fallbackBase + "s"));
+  }
+  const dict = (window.AJA_I18N && window.AJA_I18N.ar) || null;
+  if (!dict) return fallbackBase;
+  const n = Math.abs(count) % 100;
+  let suffix = "";
+  if (n === 1)       suffix = "";      // singular
+  else if (n === 2)  suffix = ".2";    // dual
+  else if (n >= 3 && n <= 10) suffix = ".few";  // 3-10 plural
+  else               suffix = ".many"; // 0, 11+ (falls back to singular form in tamyiz)
+  return dict[key + suffix] || dict[key] || fallbackBase;
+}
 
 
 // ─── AUTO LOGIN ON PAGE LOAD ─────────────────────────────────────────────────
@@ -2559,7 +2584,7 @@ async function showRecentResults() {
         <div class="results-modal">
           <div class="results-header">
             <h2>While you were away</h2>
-            <p class="results-subtitle">${results.length} bet${results.length > 1 ? "s" : ""} settled since your last visit</p>
+            <p class="results-subtitle">${results.length} ${Lp("live.betsCount", results.length, "bet")} ${L("results.subtitleTail","settled since your last visit")}</p>
           </div>
           <div class="results-net-bar ${netPositive ? 'net-pos' : 'net-neg'}">
             <div class="results-net-row">
@@ -2958,11 +2983,20 @@ if (window.AJA_I18N && window.AJA_I18N.ar) {
 
     // ── Roulette P&L card ────────────────────────────────────────────
     "rpnl.spins":        "دورة",
+    "rpnl.spins.2":      "دورتان",
+    "rpnl.spins.few":    "دورات",
+    "rpnl.spins.many":   "دورة",
     "rpnl.won":          "فائزة",
     "rpnl.wagered":      "مُراهن",
     "rpnl.up":           "ربح",
     "rpnl.down":         "خسارة",
     "rpnl.even":         "متعادل",
+
+    // ── Confirmation label ("N bet(s) placed") ────────────────────────
+    "conf.placed":       "تم وضعها",
+
+    // ── Results modal subtitle tail ("...settled since your last visit") ─
+    "results.subtitleTail": "سُوّيت منذ آخر زيارة",
 
     // ── Empty / failure states ───────────────────────────────────────
     "empty.settledBets": "لا توجد رهانات مسواة بعد.",
@@ -3021,6 +3055,9 @@ if (window.AJA_I18N && window.AJA_I18N.ar) {
     "live.empty":        "لا توجد رهانات مفتوحة حالياً.",
     "live.staked":       "الرهان الإجمالي",
     "live.betsCount":    "رهان",
+    "live.betsCount.2":  "رهانان",
+    "live.betsCount.few": "رهانات",
+    "live.betsCount.many": "رهان",
     "live.legMain":      "رهان أساسي",
     "live.legSide":      "رهان جانبي",
     "live.will":         "الأرباح المتوقعة",
