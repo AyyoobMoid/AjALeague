@@ -1520,7 +1520,7 @@ if (match.result) {
 
         matchesHtml += `
           <div class="match-item">
-            <h4>${match.team_a} vs ${match.team_b}</h4>
+            <h4>${teamPair(match.team_a, match.team_b)}</h4>
 
             <p>
               Stage: ${match.stage}
@@ -1659,7 +1659,7 @@ async function loadPredictionHistory() {
 
       box.innerHTML += `
         <div class="match-item">
-          <h4>${item.team_a} vs ${item.team_b}</h4>
+          <h4>${teamPair(item.team_a, item.team_b)}</h4>
           <p style="font-size:0.82rem;color:#aaa;">${item.stage}${item.group_name ? " · " + item.group_name : ""} · ${matchDate}</p>
           <p>Pick: <strong>${pickLabel}</strong> · Staked: <strong>${item.points_used.toLocaleString()} pts</strong>${odds ? ` · Odds: <strong>${odds.toFixed(2)}x</strong>` : ""}</p>
           ${item.result ? `<p style="color:#aaa;font-size:0.82rem;">Result: ${resultText}</p>` : ""}
@@ -2046,7 +2046,7 @@ async function showUserHistory(username) {
 
       return `
         <div class="match-item">
-          <h4>${item.team_a} vs ${item.team_b}</h4>
+          <h4>${teamPair(item.team_a, item.team_b)}</h4>
           <p style="font-size:0.82rem;color:#aaa;">${item.stage}${item.group_name ? " · " + item.group_name : ""} · ${matchDate}</p>
           <p>Pick: <strong>${pickLabel}</strong> · ${item.points_used.toLocaleString()} pts${odds ? ` @ ${odds.toFixed(2)}x` : ""}</p>
           <p style="color:#aaa;font-size:0.82rem;">Result: ${resultText}</p>
@@ -2299,13 +2299,21 @@ async function loadActiveBets() {
       return;
     }
 
-    // Human label for a bet leg, e.g. "Brazil to advance", "Total Over 2.5", "BTTS Yes".
+    // Human label for a bet leg — uses localBetType() for i18n on sidebets.
     const legLabel = (b, isKO, line) => {
       const t = (b.bet_type || "moneyline").toLowerCase();
-      if (t === "total") return `Total Goals: ${b.selected_team === "OVER" ? "Over" : "Under"} ${line}`;
-      if (t === "btts") return `Both Teams To Score: ${b.selected_team === "YES" ? "Yes" : "No"}`;
-      if (b.selected_team === "DRAW") return "Draw";
-      return isKO ? `${b.selected_team} to advance` : b.selected_team;
+      if (t === "total") {
+        const side = b.selected_team === "OVER" ? localBetType("total","OVER") : localBetType("total","UNDER");
+        return `${side} ${line}`;
+      }
+      if (t === "btts") return localBetType("btts", b.selected_team);
+      if (b.selected_team === "DRAW") return localBetType("moneyline","DRAW");
+      // Moneyline — show team pill + "to advance" if knockout
+      const lang = localStorage.getItem("aja_lang") || "en";
+      const dict = (lang === "ar" && window.AJA_I18N && window.AJA_I18N.ar) ? window.AJA_I18N.ar : null;
+      const advance = (dict && dict["bet.toAdvance"]) || "to advance";
+      const nm = teamFullName(b.selected_team) + " " + (isKO ? advance : "");
+      return `${teamFlag(b.selected_team)} <b>${teamCode(b.selected_team)}</b> <span class="leg-full">${nm}</span>`;
     };
     // moneyline first, then total, then btts
     const typeOrder = t => ({ moneyline: 0, total: 1, btts: 2 }[(t || "moneyline").toLowerCase()] ?? 9);
@@ -2362,18 +2370,31 @@ async function loadActiveBets() {
       const betCount = Object.values(g.players).flat().length;
 
       return `
-        <div class="match-item">
-          <h4>${g.team_a} vs ${g.team_b}</h4>
-          <p>${g.stage}${g.group_name ? " · " + g.group_name : ""} · ${matchDate} UAE</p>
-          <p style="color:#ffd600;font-size:0.85rem;">Total staked: ${totalStake.toLocaleString()} pts · ${betCount} bet${betCount > 1 ? "s" : ""}</p>
+        <div class="match-item live-bets-match">
+          <div class="live-match-head">
+            ${teamPair(g.team_a, g.team_b)}
+            <div class="live-match-meta">${g.stage}${g.group_name ? " · " + g.group_name : ""} · ${matchDate} UAE</div>
+          </div>
+          <div class="live-match-summary">
+            <span class="live-summary-label">${t('live.staked', 'Total staked')}</span>
+            <span class="live-summary-val mono">${totalStake.toLocaleString()} pts</span>
+            <span class="live-summary-count">${betCount} ${t('live.betsCount', 'bet' + (betCount > 1 ? 's' : ''))}</span>
+          </div>
           <div class="abet-players">${playerBlocks}</div>
         </div>
       `;
     }).join("");
 
   } catch (err) {
-    document.getElementById("activeBetsList").innerHTML = "<p>Could not load bets.</p>";
+    document.getElementById("activeBetsList").innerHTML = `<p class="empty-state">${t('empty.matches', 'Could not load bets.')}</p>`;
   }
+}
+
+// Small i18n helper reused by the render above (defined inline so the async fn owns it).
+function t(key, fallback) {
+  const lang = localStorage.getItem("aja_lang") || "en";
+  const dict = (lang === "ar" && window.AJA_I18N && window.AJA_I18N.ar) ? window.AJA_I18N.ar : null;
+  return (dict && dict[key]) || fallback;
 }
 
 
@@ -2480,21 +2501,20 @@ async function showRecentResults() {
     const wins = results.filter(r => r.won).length;
     const totalStaked = results.reduce((s, r) => s + r.stake, 0);
     const currentBalance = lastKnownPoints;
-    const netColor = totalProfit >= 0 ? "#22c55e" : "#ef4444";
-    const netSign = totalProfit >= 0 ? "+" : "";
+    const netPositive = totalProfit >= 0;
+    const netSign = netPositive ? "+" : "";
 
     let betsHtml = "";
     results.forEach(r => {
       const isRefund = r.refunded === true;
-      const state = isRefund ? "refund" : (r.won ? "won" : "lost");
       const amountStr = isRefund
-        ? `${r.stake.toLocaleString()} pts back`
-        : (r.won ? `+${r.payout.toLocaleString()} pts` : `${r.profit.toLocaleString()} pts`);
-      const badgeClass = isRefund ? "badge-lost" : (r.won ? "badge-won" : "badge-lost");
-      const badgeText = isRefund ? "↩ REFUND" : (r.won ? "✅ WON" : "❌ LOST");
-      const amtClass = isRefund ? "" : (r.won ? "amount-won" : "amount-lost");
-      const itemClass = isRefund ? "" : (r.won ? "won" : "lost");
-      const oddsStr = r.odds ? ` @ ${parseFloat(r.odds).toFixed(2)}x` : "";
+        ? `${r.stake.toLocaleString()} refunded`
+        : (r.won ? `+${r.payout.toLocaleString()}` : `${r.profit.toLocaleString()}`);
+      const badgeClass = isRefund ? "badge-refund" : (r.won ? "badge-won" : "badge-lost");
+      const badgeText  = isRefund ? "REFUND" : (r.won ? "WON" : "LOST");
+      const amtClass   = isRefund ? "" : (r.won ? "amount-won" : "amount-lost");
+      const itemClass  = isRefund ? "" : (r.won ? "won" : "lost");
+      const oddsStr    = r.odds ? ` · ${parseFloat(r.odds).toFixed(2)}×` : "";
       betsHtml += `
         <div class="result-item ${itemClass}">
           <div class="result-match-row">
@@ -2502,10 +2522,10 @@ async function showRecentResults() {
             <span class="result-badge ${badgeClass}">${badgeText}</span>
           </div>
           <div class="result-detail">
-            <span>Picked <strong>${r.pick}</strong>${oddsStr} · Result: <strong>${r.result}</strong></span>
+            <span><strong>${r.pick}</strong>${oddsStr} → <strong>${r.result}</strong></span>
             <span class="result-amount ${amtClass}">${amountStr}</span>
           </div>
-          <div class="result-stake">Stake: ${r.stake.toLocaleString()} pts</div>
+          <div class="result-stake">Stake ${r.stake.toLocaleString()} pts</div>
         </div>
       `;
     });
@@ -2514,21 +2534,21 @@ async function showRecentResults() {
       <div class="results-modal-overlay" id="resultsModal">
         <div class="results-modal">
           <div class="results-header">
-            <h2>👋 Welcome back!</h2>
-            <p class="results-subtitle">${results.length} bet${results.length > 1 ? "s" : ""} settled while you were away</p>
+            <h2>While you were away</h2>
+            <p class="results-subtitle">${results.length} bet${results.length > 1 ? "s" : ""} settled since your last visit</p>
           </div>
-          <div class="results-net-bar" style="border-color:${netColor};background:${totalProfit >= 0 ? "rgba(34,197,94,0.1)" : "rgba(239,68,68,0.1)"};">
+          <div class="results-net-bar ${netPositive ? 'net-pos' : 'net-neg'}">
             <div class="results-net-row">
-              <span style="color:#aaa;">Net result</span>
-              <span style="color:${netColor};font-size:1.3rem;font-weight:900;">${netSign}${totalProfit.toLocaleString()} pts</span>
+              <span class="results-net-label">Net result</span>
+              <span class="results-net-total ${netPositive ? 'pos' : 'neg'}">${netSign}${totalProfit.toLocaleString()} pts</span>
             </div>
-            <div class="results-net-row" style="font-size:0.82rem;margin-top:4px;">
-              <span style="color:#aaa;">${wins}/${results.length} correct · ${totalStaked.toLocaleString()} staked</span>
-              ${currentBalance ? `<span style="color:#ffd600;">Balance: ${currentBalance.toLocaleString()} pts</span>` : ""}
+            <div class="results-net-row results-net-sub">
+              <span><b>${wins}</b>/<b>${results.length}</b> correct · <b>${totalStaked.toLocaleString()}</b> staked</span>
+              ${currentBalance ? `<span>Balance <b>${currentBalance.toLocaleString()}</b></span>` : ""}
             </div>
           </div>
           <div class="results-list">${betsHtml}</div>
-          <button class="confirm-btn" onclick="closeResultsModal()">Got it!</button>
+          <button class="btn-primary" onclick="closeResultsModal()">Continue</button>
         </div>
       </div>
     `;
@@ -2749,3 +2769,195 @@ document.addEventListener("DOMContentLoaded", () => {
     if (avatar.textContent !== initials) avatar.textContent = initials;
   }, 1000);
 })();
+
+// ─── SIGNAL: Team lookup (short code + flag + Arabic name) ────────────────────
+// Full name (as stored in DB) → { code, flag, ar } lookup.
+// If a team isn't in this map, the raw name renders — safe fallback.
+// Grouped by regional confederation for maintenance.
+window.AJA_TEAMS = {
+  // ── UEFA ────────────────────────────────────────────────
+  "France":            { code: "FRA", flag: "🇫🇷", ar: "فرنسا" },
+  "Spain":             { code: "ESP", flag: "🇪🇸", ar: "إسبانيا" },
+  "Portugal":          { code: "POR", flag: "🇵🇹", ar: "البرتغال" },
+  "England":           { code: "ENG", flag: "🏴󠁧󠁢󠁥󠁮󠁧󠁿", ar: "إنجلترا" },
+  "Germany":           { code: "GER", flag: "🇩🇪", ar: "ألمانيا" },
+  "Netherlands":       { code: "NED", flag: "🇳🇱", ar: "هولندا" },
+  "Belgium":           { code: "BEL", flag: "🇧🇪", ar: "بلجيكا" },
+  "Italy":             { code: "ITA", flag: "🇮🇹", ar: "إيطاليا" },
+  "Croatia":           { code: "CRO", flag: "🇭🇷", ar: "كرواتيا" },
+  "Switzerland":       { code: "SUI", flag: "🇨🇭", ar: "سويسرا" },
+  "Denmark":           { code: "DEN", flag: "🇩🇰", ar: "الدنمارك" },
+  "Sweden":            { code: "SWE", flag: "🇸🇪", ar: "السويد" },
+  "Norway":            { code: "NOR", flag: "🇳🇴", ar: "النرويج" },
+  "Poland":            { code: "POL", flag: "🇵🇱", ar: "بولندا" },
+  "Austria":           { code: "AUT", flag: "🇦🇹", ar: "النمسا" },
+  "Czechia":           { code: "CZE", flag: "🇨🇿", ar: "التشيك" },
+  "Scotland":          { code: "SCO", flag: "🏴󠁧󠁢󠁳󠁣󠁴󠁿", ar: "اسكتلندا" },
+  "Turkiye":           { code: "TUR", flag: "🇹🇷", ar: "تركيا" },
+  "Turkey":            { code: "TUR", flag: "🇹🇷", ar: "تركيا" },
+  "BosniaHerzegovina": { code: "BIH", flag: "🇧🇦", ar: "البوسنة والهرسك" },
+  "Bosnia":            { code: "BIH", flag: "🇧🇦", ar: "البوسنة" },
+  // ── CONMEBOL ────────────────────────────────────────────
+  "Argentina":  { code: "ARG", flag: "🇦🇷", ar: "الأرجنتين" },
+  "Brazil":     { code: "BRA", flag: "🇧🇷", ar: "البرازيل" },
+  "Uruguay":    { code: "URU", flag: "🇺🇾", ar: "الأوروغواي" },
+  "Colombia":   { code: "COL", flag: "🇨🇴", ar: "كولومبيا" },
+  "Paraguay":   { code: "PAR", flag: "🇵🇾", ar: "باراغواي" },
+  "Ecuador":    { code: "ECU", flag: "🇪🇨", ar: "الإكوادور" },
+  // ── CONCACAF ────────────────────────────────────────────
+  "USA":        { code: "USA", flag: "🇺🇸", ar: "أمريكا" },
+  "Mexico":     { code: "MEX", flag: "🇲🇽", ar: "المكسيك" },
+  "Canada":     { code: "CAN", flag: "🇨🇦", ar: "كندا" },
+  "Panama":     { code: "PAN", flag: "🇵🇦", ar: "بنما" },
+  "Haiti":      { code: "HAI", flag: "🇭🇹", ar: "هايتي" },
+  "Curacao":    { code: "CUR", flag: "🇨🇼", ar: "كوراساو" },
+  // ── CAF ─────────────────────────────────────────────────
+  "Morocco":    { code: "MAR", flag: "🇲🇦", ar: "المغرب" },
+  "Senegal":    { code: "SEN", flag: "🇸🇳", ar: "السنغال" },
+  "Egypt":      { code: "EGY", flag: "🇪🇬", ar: "مصر" },
+  "Algeria":    { code: "ALG", flag: "🇩🇿", ar: "الجزائر" },
+  "Tunisia":    { code: "TUN", flag: "🇹🇳", ar: "تونس" },
+  "Ghana":      { code: "GHA", flag: "🇬🇭", ar: "غانا" },
+  "IvoryCoast": { code: "CIV", flag: "🇨🇮", ar: "ساحل العاج" },
+  "CongoDR":    { code: "COD", flag: "🇨🇩", ar: "الكونغو الديمقراطية" },
+  "DR Congo":   { code: "COD", flag: "🇨🇩", ar: "الكونغو الديمقراطية" },
+  "SouthAfrica":{ code: "RSA", flag: "🇿🇦", ar: "جنوب أفريقيا" },
+  "CaboVerde":  { code: "CPV", flag: "🇨🇻", ar: "الرأس الأخضر" },
+  // ── AFC ─────────────────────────────────────────────────
+  "Japan":         { code: "JPN", flag: "🇯🇵", ar: "اليابان" },
+  "KoreaRepublic": { code: "KOR", flag: "🇰🇷", ar: "كوريا الجنوبية" },
+  "South Korea":   { code: "KOR", flag: "🇰🇷", ar: "كوريا الجنوبية" },
+  "Iran":          { code: "IRN", flag: "🇮🇷", ar: "إيران" },
+  "SaudiArabia":   { code: "KSA", flag: "🇸🇦", ar: "السعودية" },
+  "Saudi Arabia":  { code: "KSA", flag: "🇸🇦", ar: "السعودية" },
+  "Qatar":         { code: "QAT", flag: "🇶🇦", ar: "قطر" },
+  "Iraq":          { code: "IRQ", flag: "🇮🇶", ar: "العراق" },
+  "Jordan":        { code: "JOR", flag: "🇯🇴", ar: "الأردن" },
+  "Uzbekistan":    { code: "UZB", flag: "🇺🇿", ar: "أوزبكستان" },
+  "Australia":     { code: "AUS", flag: "🇦🇺", ar: "أستراليا" },
+  // ── OFC ─────────────────────────────────────────────────
+  "NewZealand":  { code: "NZL", flag: "🇳🇿", ar: "نيوزيلندا" },
+  "New Zealand": { code: "NZL", flag: "🇳🇿", ar: "نيوزيلندا" },
+  // ── Special ─────────────────────────────────────────────
+  "DRAW":        { code: "DRAW", flag: "🤝", ar: "تعادل" },
+};
+
+// Return the short code for a team — safe fallback to first 3 letters uppercased.
+function teamCode(name) {
+  if (!name) return "";
+  const t = window.AJA_TEAMS[name];
+  return t ? t.code : name.slice(0, 3).toUpperCase();
+}
+
+// Return the flag emoji for a team — safe fallback to a placeholder ⚽.
+function teamFlag(name) {
+  if (!name) return "";
+  const t = window.AJA_TEAMS[name];
+  return t ? t.flag : "⚽";
+}
+
+// Return the localized full name — Arabic if lang=ar and mapped, else English.
+function teamFullName(name) {
+  if (!name) return "";
+  const lang = localStorage.getItem("aja_lang") || "en";
+  if (lang !== "ar") return name;
+  const t = window.AJA_TEAMS[name];
+  return (t && t.ar) ? t.ar : name;
+}
+
+// Render a team as a two-line pill: FLAG CODE / small full-name
+// className optional, e.g. "team-pill-lg" for larger version
+function teamPill(name, opts = {}) {
+  const code = teamCode(name);
+  const flag = teamFlag(name);
+  const full = teamFullName(name);
+  const cls  = opts.className || "team-pill";
+  return `<span class="${cls}">
+    <span class="team-pill-top"><span class="team-flag">${flag}</span><span class="team-code">${code}</span></span>
+    <span class="team-pill-full">${full}</span>
+  </span>`;
+}
+
+// Render "TeamA · TeamB" as two pills separated by a divider
+function teamPair(a, b) {
+  return `<span class="team-pair">
+    ${teamPill(a)}
+    <span class="team-pair-sep">·</span>
+    ${teamPill(b)}
+  </span>`;
+}
+
+// ─── SIGNAL: extend Arabic dictionary with bet types + market names ─────────
+if (window.AJA_I18N && window.AJA_I18N.ar) {
+  Object.assign(window.AJA_I18N.ar, {
+    // Bet types & markets (used in live-bets, history, results)
+    "bet.matchWinner":   "الفائز بالمباراة",
+    "bet.toAdvance":     "التأهل",
+    "bet.total":         "مجموع الأهداف",
+    "bet.totalOver":     "أكثر من",
+    "bet.totalUnder":    "أقل من",
+    "bet.btts":          "الفريقان يسجلان",
+    "bet.yes":           "نعم",
+    "bet.no":            "لا",
+    "bet.draw":          "تعادل",
+    "bet.stake":         "الرهان",
+    "bet.payout":        "الأرباح",
+    "bet.profit":        "الربح",
+    "bet.won":           "فوز",
+    "bet.lost":          "خسارة",
+    "bet.pending":       "معلّق",
+    "bet.refund":        "استرداد",
+    // Results modal
+    "results.title":     "بينما كنت غائباً",
+    "results.subtitle":  "رهانات تمّت تسويتها منذ آخر زيارة",
+    "results.net":       "الصافي",
+    "results.correct":   "صحيح",
+    "results.staked":    "الرهان الإجمالي",
+    "results.balance":   "الرصيد",
+    "results.continue":  "متابعة",
+    // Live bets
+    "live.empty":        "لا توجد رهانات مفتوحة حالياً.",
+    "live.staked":       "الرهان الإجمالي",
+    "live.betsCount":    "رهان",
+    "live.legMain":      "رهان أساسي",
+    "live.legSide":      "رهان جانبي",
+    "live.will":         "الأرباح المتوقعة",
+    // Match card labels
+    "match.stage":       "المرحلة",
+    "match.venue":       "الملعب",
+    "match.starts":      "الانطلاق",
+    "match.closes":      "إغلاق التوقعات",
+    "match.result":      "النتيجة",
+    // Common
+    "common.total":      "الإجمالي",
+    "common.balance":    "الرصيد",
+    "common.at":         "@",
+    "common.vs":         "ضد",
+    "common.cancel":     "إلغاء",
+    "common.close":      "إغلاق",
+    "common.yes":        "نعم",
+    "common.no":         "لا",
+    // Empty / loading states
+    "empty.history":     "لا توجد رهانات بعد.",
+    "empty.leaderboard": "لا يوجد لاعبون بعد.",
+    "empty.matches":     "لا توجد مباريات متاحة.",
+  });
+}
+
+// Helper: localized bet type label (uses i18n keys or falls back to English).
+function localBetType(betType, selected) {
+  const lang = localStorage.getItem("aja_lang") || "en";
+  const dict = (lang === "ar" && window.AJA_I18N && window.AJA_I18N.ar) ? window.AJA_I18N.ar : null;
+  const tr = (key, fallback) => (dict && dict[key]) || fallback;
+  const t = (betType || "moneyline").toLowerCase();
+  if (t === "total") {
+    const side = selected === "OVER" ? tr("bet.totalOver", "Over") : tr("bet.totalUnder", "Under");
+    return `${tr("bet.total", "Total Goals")}: ${side}`;
+  }
+  if (t === "btts") {
+    const side = selected === "YES" ? tr("bet.yes", "Yes") : tr("bet.no", "No");
+    return `${tr("bet.btts", "Both Teams To Score")}: ${side}`;
+  }
+  if (selected === "DRAW") return tr("bet.draw", "Draw");
+  return null; // caller handles moneyline (team name) case
+}

@@ -2032,3 +2032,466 @@ input[type="number"]::-webkit-outer-spin-button { -webkit-appearance: none; marg
   margin-top: 12px;
   width: 100%;
 }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   "While you were away" results modal — Signal skin
+   Restyles the modal that pops up after login showing settled results.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.results-modal {
+  width: 100%;
+  max-width: 380px;
+  max-height: 88vh;
+  overflow-y: auto;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  padding: 20px;
+  animation: modalSlideUp var(--dur-slow) var(--ease-out);
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  position: relative;
+}
+/* Signature accent line across the top — same as balance card */
+.results-modal::before {
+  content: "";
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--accent), transparent);
+  opacity: 0.8;
+  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+}
+.results-header h2 {
+  font-size: 17px;
+  font-weight: 600;
+  color: var(--ink);
+  margin-bottom: 4px;
+  letter-spacing: -0.01em;
+}
+.results-subtitle {
+  font-size: 12px;
+  color: var(--dim);
+  line-height: 1.5;
+}
+
+/* Net-result summary bar */
+.results-net-bar {
+  padding: 12px 14px;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.results-net-bar.net-pos { border-color: var(--accent-line); background: var(--accent-soft); }
+.results-net-bar.net-neg { border-color: var(--danger-line); background: var(--danger-dim); }
+.results-net-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+}
+.results-net-label { font-size: 12px; color: var(--dim); text-transform: uppercase; letter-spacing: 0.06em; }
+.results-net-total {
+  font-family: 'JetBrains Mono', monospace;
+  font-variant-numeric: tabular-nums;
+  font-size: 20px;
+  font-weight: 700;
+}
+.results-net-total.pos { color: var(--accent); }
+.results-net-total.neg { color: var(--danger); }
+.results-net-sub {
+  font-size: 11px;
+  color: var(--dim);
+  font-family: 'JetBrains Mono', monospace;
+  font-variant-numeric: tabular-nums;
+}
+.results-net-sub b { color: var(--ink); font-weight: 500; }
+
+/* Individual result rows */
+.results-list { display: flex; flex-direction: column; gap: 8px; }
+.result-item {
+  padding: 10px 12px;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+}
+.result-item.won  { border-color: var(--accent-line); }
+.result-item.lost { border-color: var(--danger-line); }
+
+.result-match-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+.result-match-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink);
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.result-badge {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 3px 8px;
+  border-radius: 100px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  flex: 0 0 auto;
+}
+.badge-won  { background: var(--accent-soft); color: var(--accent); border: 1px solid var(--accent-line); }
+.badge-lost { background: var(--danger-dim);  color: var(--danger); border: 1px solid var(--danger-line); }
+.badge-refund { background: var(--surface-3); color: var(--dim); border: 1px solid var(--line-2); }
+
+.result-detail {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--dim);
+  margin-bottom: 4px;
+}
+.result-detail strong { color: var(--ink); font-weight: 500; }
+.result-amount {
+  font-family: 'JetBrains Mono', monospace;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  font-size: 13px;
+  white-space: nowrap;
+}
+.amount-won  { color: var(--accent); }
+.amount-lost { color: var(--danger); }
+
+.result-stake {
+  font-size: 11px;
+  color: var(--dimmer);
+  font-family: 'JetBrains Mono', monospace;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Close button (already inherits btn-primary look, but ensure spacing) */
+.results-modal .confirm-btn { margin-top: 4px; }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   TEAM PILLS + LIVE BETS + DESKTOP RESPONSIVE + ALIGNMENT
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* ─── Team pill: FLAG + CODE stacked over full name ─────────────────────── */
+.team-pill {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0;
+  line-height: 1.2;
+  min-width: 0;
+}
+.team-pill-top {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.team-flag {
+  font-size: 18px;
+  line-height: 1;
+  /* Emoji flag needs stable render — force color-emoji font path when available */
+  font-family: "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif;
+}
+.team-code {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--ink);
+  letter-spacing: 0.04em;
+}
+.team-pill-full {
+  font-size: 10px;
+  color: var(--dim);
+  font-weight: 500;
+  letter-spacing: 0;
+  margin-top: 2px;
+  max-width: 100px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* In RTL, code + flag order reads correctly because both are inline-row anyway */
+[dir="rtl"] .team-pill-top { flex-direction: row-reverse; }
+
+/* Team pair (used in match card headers, live-bets headers, etc.) */
+.team-pair {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  min-width: 0;
+}
+.team-pair-sep {
+  color: var(--dimmer);
+  font-size: 15px;
+  margin-top: 2px;
+  flex: 0 0 auto;
+}
+
+/* ─── Live bets — reworked with dividers ────────────────────────────────── */
+.live-bets-match {
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.live-match-head {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--line);
+}
+.live-match-meta {
+  font-size: 11px;
+  color: var(--dim);
+  font-family: 'JetBrains Mono', monospace;
+  font-variant-numeric: tabular-nums;
+}
+
+.live-match-summary {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  background: var(--surface-2);
+  border-radius: var(--radius);
+  font-size: 12px;
+}
+.live-summary-label { color: var(--dim); }
+.live-summary-val {
+  color: var(--accent);
+  font-weight: 700;
+  font-family: 'JetBrains Mono', monospace;
+  font-variant-numeric: tabular-nums;
+}
+.live-summary-count {
+  margin-left: auto;
+  color: var(--dim);
+  font-size: 11px;
+}
+[dir="rtl"] .live-summary-count { margin-left: 0; margin-right: auto; }
+
+/* Player block — clear divider between each player's bets */
+.abet-players {
+  display: flex;
+  flex-direction: column;
+}
+.abet-player-block {
+  padding: 12px 0;
+  border-bottom: 1px dashed var(--line);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.abet-player-block:last-child { border-bottom: none; padding-bottom: 0; }
+.abet-player-block:first-child { padding-top: 2px; }
+
+.abet-player-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+.abet-player-head strong {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink);
+}
+.abet-player-meta {
+  font-size: 11px;
+  color: var(--dim);
+  font-family: 'JetBrains Mono', monospace;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Individual bet leg row */
+.abet-leg {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  gap: 8px;
+  align-items: center;
+  padding: 6px 0;
+  font-size: 12px;
+  line-height: 1.4;
+}
+.abet-leg-side { padding-left: 12px; opacity: 0.85; }
+[dir="rtl"] .abet-leg-side { padding-left: 0; padding-right: 12px; }
+.abet-leg-pick {
+  color: var(--ink-2);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.abet-leg-pick b {
+  color: var(--ink);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  margin-left: 2px;
+}
+.abet-leg-pick .leg-full {
+  color: var(--dim);
+  font-size: 11px;
+  margin-left: 4px;
+}
+.abet-leg-stake {
+  font-family: 'JetBrains Mono', monospace;
+  font-variant-numeric: tabular-nums;
+  font-size: 11px;
+  color: var(--dim);
+  white-space: nowrap;
+}
+.abet-leg-win {
+  font-family: 'JetBrains Mono', monospace;
+  font-variant-numeric: tabular-nums;
+  font-size: 11px;
+  color: var(--accent);
+  white-space: nowrap;
+}
+.abet-profit { color: var(--dim); }
+
+/* Empty state */
+.empty-state {
+  padding: 24px 16px;
+  text-align: center;
+  color: var(--dim);
+  font-size: 13px;
+}
+
+/* ─── Team pill inside match-item h4 (the standard match card headers) ──── */
+.match-item h4 .team-pair {
+  align-items: center;
+}
+/* Use team pills in main match cards too — they get rendered by JS on refresh */
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   DESKTOP / BROWSER RESPONSIVENESS
+   Currently the site is mobile-only (max 480px). Give it a real desktop layout.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* ── Wide screen (tablet+, desktop) ─────────────────────────────────────── */
+@media (min-width: 720px) {
+  html, body { background: #050508; }
+
+  body {
+    max-width: none;                  /* release the 480px cap */
+    display: block;
+  }
+
+  /* A single centered column that grows a bit for readability without
+     losing the "app" feel. Use a wrapper approach: pin app content in a
+     content column, put the bottom nav in its own wider band. */
+  .app {
+    max-width: 720px;
+    margin: 0 auto;
+    padding: 0;
+  }
+
+  .topbar {
+    max-width: 720px;
+    margin: 0 auto;
+  }
+
+  /* Give balance card + live strip a bit of breathing room */
+  .balance-card { margin: 20px 20px 16px; padding: 26px 24px; }
+  .balance-num { font-size: 40px; }
+  .live-strip { margin: 0 20px 18px; padding: 13px 16px; }
+
+  /* Section headers align to same padding */
+  .section-h { padding: 8px 20px 14px; }
+  #leaderboard,
+  #activeBetsList,
+  #predictionHistory,
+  #profileStats,
+  #rouletteSection > div {
+    padding: 0 20px 20px !important;
+  }
+
+  /* Match card rendering area */
+  #matches { padding: 0 20px 20px; }
+  .date-dropdown { margin: 0 0 14px; }
+
+  /* Auth screens center properly */
+  #loginPage, #registerPage, #pendingPage {
+    max-width: 440px;
+    margin: 0 auto;
+    padding: 60px 24px;
+  }
+
+  /* Bottom nav: still fixed to bottom, but capped so it doesn't sprawl */
+  .bottom-nav {
+    max-width: 720px;
+    border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+  }
+}
+
+/* ── Even wider (large desktop) — two-column dashboard ──────────────────── */
+@media (min-width: 1100px) {
+  .app { max-width: 1100px; }
+  .topbar { max-width: 1100px; }
+  .bottom-nav { max-width: 1100px; }
+
+  /* At this width, we can put balance/live-strip alongside content but keeping
+     things simple: just widen the column further. A true multi-pane layout
+     needs restructured HTML, which is out of scope here. */
+  .balance-card { margin: 24px auto 18px; max-width: 560px; padding: 32px; }
+  .balance-num { font-size: 44px; }
+  .live-strip { margin: 0 auto 20px; max-width: 560px; }
+
+  /* Section content centers with a comfortable reading width */
+  #matches, #leaderboard, #activeBetsList, #predictionHistory, #profileStats {
+    max-width: 720px;
+    margin: 0 auto;
+  }
+  .section-h { max-width: 720px; margin: 0 auto; }
+  #rouletteSection > div { max-width: 480px; margin: 0 auto; }
+}
+
+/* ── Even wider (huge desktop) — cap the whole thing so it doesn't stretch ─ */
+@media (min-width: 1400px) {
+  .app, .topbar, .bottom-nav { max-width: 1200px; }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   ALIGNMENT AUDIT — targeted fixes
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* Balance stats: even columns, tabular numerals aligned */
+.balance-stats { align-items: flex-start; }
+.balance-stat { text-align: left; }
+[dir="rtl"] .balance-stat { text-align: right; }
+
+/* Match card top row: teams left, meta right, both baseline-aligned */
+.match-item > h4 {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+/* Fix bet-builder options: labels and odds aligned consistently */
+.bb-opt { text-align: left; }
+[dir="rtl"] .bb-opt { text-align: right; }
+
+/* Section-h count pill vertically centered */
+.section-h h2 { display: flex; align-items: center; gap: 8px; }
+.section-h .count { line-height: 1; padding: 3px 8px; align-self: center; }
+
+/* Roulette wrap centering on all viewports */
+.roulette-wrap { display: flex; flex-direction: column; align-items: stretch; }
+.roulette-stage { align-self: center; }
