@@ -1480,8 +1480,8 @@ if (match.result) {
     <strong id="timer-${match.id}">${getCountdown(closeTime)}</strong>
   </div>
   <div class="odds-pending-box">
-    <p>⏳ Odds not available yet</p>
-    <small>Betting opens for this match once odds are set. Check back soon.</small>
+    <p>⏳ ${L("card.oddsPending","Odds not available yet")}</p>
+    <small>${L("card.oddsPendingSub","Betting opens for this match once odds are set. Check back soon.")}</small>
   </div>
   `;
 
@@ -1521,9 +1521,9 @@ if (match.result) {
 
   actionHtml = `
     <p class="locked-text">
-      Betting opens in <strong>${countdownStr}</strong> (${openDate} ${openClock} UAE)
+      ${L("card.opensIn","Betting opens in")} <strong>${countdownStr}</strong> (${openDate} ${openClock} ${L("card.uae","UAE")})
       <br>
-      <span style="font-size:0.8rem;opacity:0.7;">Closes 5 min before kickoff</span>
+      <span style="font-size:0.8rem;opacity:0.7;">${L("card.closesBefore","Closes 5 min before kickoff")}</span>
     </p>
   `;
 
@@ -2981,6 +2981,10 @@ if (window.AJA_I18N && window.AJA_I18N.ar) {
     "card.time":         "الوقت",
     "card.closesIn":     "إغلاق التوقعات خلال",
     "card.uae":          "بتوقيت الإمارات",
+    "card.opensIn":      "يفتح الرهان خلال",
+    "card.closesBefore": "يغلق قبل ٥ دقائق من بداية المباراة",
+    "card.oddsPending":  "الاحتمالات غير متاحة بعد",
+    "card.oddsPendingSub": "يفتح الرهان لهذه المباراة بمجرد تحديد الاحتمالات. تحقق قريباً.",
 
     // ── The dreaded "pts" ────────────────────────────────────────────
     // Kept short deliberately — long words like "نقاط" break narrow columns.
