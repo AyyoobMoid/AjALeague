@@ -1294,17 +1294,62 @@ input[type="number"]::-webkit-outer-spin-button { -webkit-appearance: none; marg
 #userHistoryModal .modal-content::before {
   content: "";
   display: block;
-  width: 36px;
-  height: 4px;
+  width: 44px;
+  height: 5px;
   background: var(--line-3);
-  border-radius: 2px;
+  border-radius: 3px;
   margin: 0 auto 16px;
+  cursor: pointer;
+}
+#userHistoryModal .modal-content { position: relative; }
+/* Header row with title and close button */
+#userHistoryModal .modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+#userHistoryModal .modal-close {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  min-width: 40px;
+  padding: 0;
+  background: var(--accent-soft);
+  border: 1px solid var(--accent-line);
+  border-radius: 50%;
+  color: var(--accent);
+  cursor: pointer;
+  transition: color var(--dur-fast) var(--ease-out),
+              background var(--dur-fast) var(--ease-out),
+              border-color var(--dur-fast) var(--ease-out),
+              transform var(--dur-instant) var(--ease-out);
+  flex: 0 0 auto;
+  position: relative;
+  z-index: 2;
+}
+#userHistoryModal .modal-close svg { width: 18px; height: 18px; stroke-width: 2.5; }
+#userHistoryModal .modal-close:active { transform: scale(0.92); }
+@media (hover: hover) {
+  #userHistoryModal .modal-close:hover {
+    color: var(--accent-ink);
+    background: var(--accent);
+    border-color: var(--accent);
+  }
 }
 #userHistoryTitle {
   font-size: 16px;
   font-weight: 600;
   color: var(--ink);
-  margin-bottom: 4px;
+  margin-bottom: 0;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .user-history-summary {
   display: flex;

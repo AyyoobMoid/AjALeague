@@ -1953,6 +1953,11 @@ async function showUserHistory(username) {
   statBox.innerHTML = "";
   listBox.innerHTML = "<p>Loading history...</p>";
   modal.classList.remove("hidden");
+  // Push a history state so the browser/phone back button closes the modal
+  // instead of exiting the app entirely. The popstate handler below unhides.
+  if (!history.state || history.state.modal !== "userHistory") {
+    history.pushState({ modal: "userHistory" }, "", location.href);
+  }
 
   try {
     const res = await fetch(`${API}/user-history/${encodeURIComponent(username)}`, {
@@ -1966,7 +1971,9 @@ async function showUserHistory(username) {
     }
 
     const { user, history, roulette } = data;
-    title.innerText = `${user.username}'s Bet History`;
+    // Title uses "X's history" pattern in English but Arabic reads better as "سجل X",
+    // so build it via the i18n key to avoid awkward grammar in either language.
+    title.innerText = L("history.titleFor", `${user.username}'s Bet History`).replace("{user}", user.username);
 
     // Stats summary — use the server-computed outcome (correct per market type).
     let wins = 0, losses = 0, draws = 0, refunds = 0;
@@ -2083,14 +2090,38 @@ async function showUserHistory(username) {
   }
 }
 
-function closeUserHistory() {
+function closeUserHistory(fromPopstate) {
   document.getElementById("userHistoryModal").classList.add("hidden");
+  // If the user closed via X or backdrop, pop the pushed history state so
+  // hitting back doesn't try to reopen it. If we got here FROM popstate
+  // (browser back), the state is already popped — don't touch it.
+  if (!fromPopstate && history.state && history.state.modal === "userHistory") {
+    history.back();
+  }
 }
 
 // Close modal on backdrop click
 document.addEventListener("click", function(e) {
   const modal = document.getElementById("userHistoryModal");
   if (e.target === modal) closeUserHistory();
+});
+
+// Browser/phone back button closes the modal instead of leaving the app.
+window.addEventListener("popstate", function(e) {
+  const uhm = document.getElementById("userHistoryModal");
+  if (uhm && !uhm.classList.contains("hidden")) {
+    closeUserHistory(true); // true = came from popstate, don't re-pop
+  }
+});
+
+// ESC key closes any open modal — a hard-earned keyboard-user convention.
+document.addEventListener("keydown", function(e) {
+  if (e.key === "Escape" || e.key === "Esc") {
+    const uhm = document.getElementById("userHistoryModal");
+    if (uhm && !uhm.classList.contains("hidden")) closeUserHistory();
+    const rm = document.getElementById("resultsModal");
+    if (rm) rm.remove(); // results modal removes itself rather than hiding
+  }
 });
 
 
@@ -2980,6 +3011,8 @@ if (window.AJA_I18N && window.AJA_I18N.ar) {
     "lb.cashEligible":   "مؤهل لجوائز نقدية",
 
     // ── History (own + user modal) ───────────────────────────────────
+    "history.title":     "سجل اللاعب",
+    "history.titleFor":  "سجل {user}",
     "hist.pick":         "الاختيار",
     "hist.staked":       "المُراهن",
     "hist.odds":         "الاحتمالات",
