@@ -1302,13 +1302,24 @@ input[type="number"]::-webkit-outer-spin-button { -webkit-appearance: none; marg
   cursor: pointer;
 }
 #userHistoryModal .modal-content { position: relative; }
-/* Header row with title and close button */
+/* Header row with title and close button.
+   Sticky so the X stays visible even after the user scrolls through a long
+   history. Without this, the header scrolls off with the content and users
+   feel "stuck" in the modal with no visible way out. */
 #userHistoryModal .modal-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
   margin-bottom: 12px;
+  position: sticky;
+  top: 0;
+  background: var(--bg);
+  padding: 8px 0 12px;
+  margin-top: -8px;  /* absorb the padding so header aligns with drag handle */
+  z-index: 3;
+  /* Soft fade at bottom of the header so scrolled content dissolves under it */
+  box-shadow: 0 8px 12px -8px var(--bg);
 }
 #userHistoryModal .modal-close {
   display: flex;
