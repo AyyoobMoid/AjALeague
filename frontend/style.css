@@ -1316,10 +1316,22 @@ input[type="number"]::-webkit-outer-spin-button { -webkit-appearance: none; marg
   top: 0;
   background: var(--bg);
   padding: 8px 0 12px;
-  margin-top: -8px;  /* absorb the padding so header aligns with drag handle */
+  margin-top: -8px;
   z-index: 3;
-  /* Soft fade at bottom of the header so scrolled content dissolves under it */
   box-shadow: 0 8px 12px -8px var(--bg);
+}
+/* Title must be allowed to shrink and truncate — otherwise a long username
+   pushes the X button clean off the right edge of the modal. */
+#userHistoryModal .modal-header h3 {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--ink);
+  letter-spacing: -0.01em;
 }
 #userHistoryModal .modal-close {
   display: flex;
