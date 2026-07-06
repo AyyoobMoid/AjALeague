@@ -2114,6 +2114,96 @@ window.addEventListener("popstate", function(e) {
   }
 });
 
+// Tap OR drag on the pill closes the modal.
+// - Tap (little/no movement): closes immediately on release.
+// - Drag down: modal-content follows finger; released past threshold OR with
+//   fast downward velocity closes it. Otherwise it springs back to 0.
+// Uses Pointer Events so it works uniformly across touch, mouse, and pen.
+(function wireModalDragToDismiss() {
+  const handle = document.querySelector("#userHistoryModal .modal-drag-handle");
+  const content = document.querySelector("#userHistoryModal .modal-content");
+  if (!handle || !content) return;
+
+  // Thresholds
+  const DISTANCE_TO_CLOSE = 100;     // px dragged past which we close on release
+  const VELOCITY_TO_CLOSE = 0.6;     // px/ms downward velocity that triggers close
+  const TAP_MAX_MOVE      = 6;       // total move under this = tap
+  const TAP_MAX_TIME      = 350;     // ms
+
+  let startY = 0;
+  let startTime = 0;
+  let currentY = 0;
+  let lastY = 0;
+  let lastT = 0;
+  let velocity = 0;
+  let dragging = false;
+
+  handle.addEventListener("pointerdown", (e) => {
+    // Only primary button / first touch
+    if (e.button !== undefined && e.button !== 0) return;
+    dragging = true;
+    startY = lastY = e.clientY;
+    startTime = lastT = performance.now();
+    currentY = 0;
+    velocity = 0;
+    content.classList.add("dragging");
+    // Capture pointer so we keep receiving events even if finger leaves handle
+    try { handle.setPointerCapture(e.pointerId); } catch (_) {}
+  });
+
+  handle.addEventListener("pointermove", (e) => {
+    if (!dragging) return;
+    const dy = e.clientY - startY;
+    // Only allow downward drag; upward is treated as 0 (no rubber-band up)
+    currentY = Math.max(0, dy);
+    content.style.transform = `translateY(${currentY}px)`;
+    // Track velocity from the last frame
+    const now = performance.now();
+    const dt = now - lastT;
+    if (dt > 0) velocity = (e.clientY - lastY) / dt;
+    lastY = e.clientY;
+    lastT = now;
+    e.preventDefault();
+  });
+
+  const finish = (e) => {
+    if (!dragging) return;
+    dragging = false;
+    content.classList.remove("dragging");
+    try { handle.releasePointerCapture(e.pointerId); } catch (_) {}
+
+    const elapsed = performance.now() - startTime;
+    const totalMove = Math.abs((e.clientY || 0) - startY);
+    const isTap = totalMove < TAP_MAX_MOVE && elapsed < TAP_MAX_TIME;
+    const dragClose = currentY > DISTANCE_TO_CLOSE || velocity > VELOCITY_TO_CLOSE;
+
+    if (isTap || dragClose) {
+      // Slide the modal off before hiding for a nicer feel — matches iOS behavior.
+      // The modal will already be translated; extend the slide-off.
+      const target = Math.max(currentY + 200, 400);
+      content.style.transform = `translateY(${target}px)`;
+      setTimeout(() => {
+        content.style.transform = "";
+        closeUserHistory();
+      }, 180);
+    } else {
+      // Spring back to origin. The CSS transform-transition handles the ease.
+      content.style.transform = "";
+    }
+  };
+
+  handle.addEventListener("pointerup", finish);
+  handle.addEventListener("pointercancel", finish);
+
+  // Keyboard access: Enter / Space on focused handle closes too.
+  handle.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      closeUserHistory();
+    }
+  });
+})();
+
 // ESC key closes any open modal — a hard-earned keyboard-user convention.
 document.addEventListener("keydown", function(e) {
   if (e.key === "Escape" || e.key === "Esc") {

@@ -280,7 +280,15 @@
   <!-- User History Modal -->
   <div id="userHistoryModal" class="hidden" onclick="if(event.target===this)closeUserHistory()">
     <div class="modal-content">
-      <h3 id="userHistoryTitle">Player history</h3>
+      <div class="modal-drag-handle" role="button" aria-label="Close" tabindex="0">
+        <div class="modal-drag-pill"></div>
+      </div>
+      <div class="modal-header">
+        <h3 id="userHistoryTitle" data-i18n="history.title">Player history</h3>
+        <button class="modal-close" onclick="closeUserHistory()" aria-label="Close">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
       <div id="userHistoryStats"></div>
       <div id="userHistoryList"></div>
     </div>

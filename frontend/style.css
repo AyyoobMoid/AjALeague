@@ -1286,21 +1286,48 @@ input[type="number"]::-webkit-outer-spin-button { -webkit-appearance: none; marg
   overflow-y: auto;
   padding: 20px 16px calc(20px + env(safe-area-inset-bottom));
   animation: modalSlideUp var(--dur-slow) var(--ease-out);
+  transition: transform var(--dur-slow) var(--ease-out);
+  will-change: transform;
 }
 @keyframes modalSlideUp {
   from { transform: translateY(20px); }
   to   { transform: translateY(0); }
 }
-#userHistoryModal .modal-content::before {
-  content: "";
-  display: block;
+/* Real drag-handle element — pseudo-element replaced with real DOM so we
+   can attach touch/pointer events. The visible pill is the child .modal-drag-pill;
+   the parent has generous padding so the whole strip is a hit target. */
+.modal-drag-handle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 10px 0 14px;
+  margin: -8px -16px 4px;   /* absorb padding of .modal-content to full-width */
+  cursor: grab;
+  touch-action: none;        /* we handle the swipe ourselves */
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+.modal-drag-handle:active { cursor: grabbing; }
+.modal-drag-pill {
   width: 44px;
   height: 5px;
   background: var(--line-3);
   border-radius: 3px;
-  margin: 0 auto 16px;
-  cursor: pointer;
+  transition: background var(--dur-fast) var(--ease-out),
+              width var(--dur-fast) var(--ease-out);
+  pointer-events: none;      /* let events reach the parent handle */
 }
+.modal-drag-handle:hover .modal-drag-pill,
+.modal-drag-handle:active .modal-drag-pill {
+  background: var(--dim);
+  width: 60px;
+}
+
+/* When actively dragging, disable the transform transition on modal-content
+   so it tracks the finger 1:1. On release, JS removes this class to let
+   the spring-back animation run. */
+#userHistoryModal .modal-content.dragging { transition: none !important; }
 #userHistoryModal .modal-content { position: relative; }
 /* Header row with title and close button.
    Sticky so the X stays visible even after the user scrolls through a long
