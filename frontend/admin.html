@@ -1,102 +1,155 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" dir="ltr">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Admin Panel</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover"/>
+  <meta name="theme-color" content="#0b0b10">
+  <title>AJA — Admin</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="style.css"/>
 </head>
 <body>
 
-  <video autoplay muted loop playsinline id="bgVideo">
-    <source src="assets/stadium.mp4" type="video/mp4">
-  </video>
+  <div class="app">
 
-  <div class="page">
-
+    <!-- Signal top bar -->
     <div class="topbar">
-      <div class="brand-title">
-        <img src="assets/logoo.png" class="topbar-logo" alt="Yugo Logo">
-        <h2>AJA League — Admin</h2>
+      <div class="topbar-brand">
+        <span class="topbar-brand-dot"></span>
+        <span>AJA &nbsp;<span style="color:var(--dim);font-weight:500;">·&nbsp; Admin</span></span>
+      </div>
+      <button class="btn-ghost" onclick="goHome()" style="padding:6px 12px;font-size:12px;">Back to App</button>
+    </div>
+
+    <!-- Tab navigation -->
+    <nav class="admin-tabs" role="tablist" aria-label="Admin sections">
+      <button type="button" class="admin-tab active" data-tab="players" onclick="showAdminTab('players', this)">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+        <span>Players</span>
+      </button>
+      <button type="button" class="admin-tab" data-tab="pending" onclick="showAdminTab('pending', this)">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+        <span>Pending</span>
+        <span class="tab-badge" id="pendingBadge"></span>
+      </button>
+      <button type="button" class="admin-tab" data-tab="matches" onclick="showAdminTab('matches', this)">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M2 12h20"/><path d="M12 2a14.5 14.5 0 0 0 0 20"/></svg>
+        <span>Matches</span>
+      </button>
+    </nav>
+
+    <!-- ── PLAYERS ─────────────────────────────────────────────────── -->
+    <section id="tab-players" class="admin-tab-panel">
+
+      <div class="admin-section-card">
+        <div class="admin-section-h">
+          <h3>Add player</h3>
+          <span class="admin-section-sub">Create an account with custom starting points.</span>
+        </div>
+        <div class="admin-form-grid">
+          <div class="admin-field">
+            <label for="newUserUsername">Username</label>
+            <input type="text" id="newUserUsername" placeholder="e.g. ayyoob_98">
+          </div>
+          <div class="admin-field">
+            <label for="newUserPassword">Temporary password</label>
+            <input type="password" id="newUserPassword">
+          </div>
+          <div class="admin-field">
+            <label for="newUserFullName">Full name</label>
+            <input type="text" id="newUserFullName">
+          </div>
+          <div class="admin-field">
+            <label for="newUserCountry">Country</label>
+            <input type="text" id="newUserCountry">
+          </div>
+          <div class="admin-field">
+            <label for="newUserPoints">Starting points</label>
+            <input type="number" id="newUserPoints" placeholder="5000 default">
+          </div>
+          <div class="admin-field admin-field-check">
+            <label class="admin-check-row">
+              <input type="checkbox" id="newUserCashEligible">
+              <span>Eligible for cash prizes</span>
+            </label>
+          </div>
+        </div>
+        <button class="btn-primary" onclick="addUserWithPoints()">Add player</button>
       </div>
 
-      <button class="logout-btn" onclick="goHome()">Back to App</button>
-    </div>
-
-
-
-    <details class="admin-dropdown" open>
-      <summary>Players Management</summary>
-
-      <div class="dash-card full">
-        <div id="adminUsers"></div>
+      <div class="admin-section-card">
+        <div class="admin-section-h">
+          <h3>Manage players</h3>
+          <span class="admin-section-sub">Edit points, cash eligibility, active state.</span>
+        </div>
+        <div id="adminUsers" class="admin-list"></div>
       </div>
-    </details>
 
+    </section>
 
-
-
-    <div class="dash-card full">
-      <h3>⏳ Pending Approvals</h3>
-      <p class="small-text">New accounts awaiting activation.</p>
-      <div id="pendingUsers"></div>
-      <button onclick="loadPendingUsers()" style="margin-top:10px;">Refresh</button>
-    </div>
-
-    <div class="dash-card full">
-      <h3>Import Users from Yugo League</h3>
-      <p class="small-text">Paste the JSON export from the Yugo admin panel below. This will add new users and update points for any who already exist.</p>
-      <textarea id="importJson" rows="8" style="width:100%;padding:12px;border-radius:12px;background:#0a0800;color:#fff;border:1px solid rgba(255,214,0,0.3);font-size:13px;margin-top:10px;" placeholder='[{"username":"john","fullName":"John Doe","country":"UAE","points":12500}, ...]'></textarea>
-      <button onclick="importUsers()">Import Users</button>
-      <p id="importResult" class="small-text" style="margin-top:10px;"></p>
-    </div>
-
-    <div class="dash-card full">
-      <h3>Add User with Custom Points</h3>
-      <p class="small-text">Use this to add a family member and carry over their points from another league.</p>
-      <input type="text" id="newUserUsername" placeholder="Username">
-      <input type="password" id="newUserPassword" placeholder="Temporary password">
-      <input type="text" id="newUserFullName" placeholder="Full name">
-      <input type="text" id="newUserCountry" placeholder="Country">
-      <input type="number" id="newUserPoints" placeholder="Starting points (default 5000)">
-      <label style="display:flex;align-items:center;gap:8px;margin:8px 0;color:#22c55e;font-size:0.9rem;cursor:pointer;">
-        <input type="checkbox" id="newUserCashEligible" style="width:auto;">
-        Mark as cash-prize eligible ($)
-      </label>
-      <button onclick="addUserWithPoints()">Add User</button>
-    </div>
-
-    <div class="dash-card full">
-  <h3>Add New Match</h3>
-
-  <input type="text" id="newTeamA" placeholder="Team A">
-  <input type="text" id="newTeamB" placeholder="Team B">
-  <input type="text" id="newStage" placeholder="Stage e.g. Group Stage or Round of 32">
-  <input type="text" id="newVenue" placeholder="Venue">
-<input
-  type="datetime-local"
-  id="newMatchTime"
-  step="60"
->
-
-<p class="small-text">
-  Match time is UAE time. If your picker shows 12-hour format, use PM for evening matches.
-</p>
-  <button onclick="addNewMatch()">
-    Add Match
-  </button>
-</div>
-
-    <details class="admin-dropdown">
-      <summary>Match Result Control</summary>
-
-      <div class="dash-card full">
-        <div id="adminMatches"></div>
+    <!-- ── PENDING ─────────────────────────────────────────────────── -->
+    <section id="tab-pending" class="admin-tab-panel hidden">
+      <div class="admin-section-card">
+        <div class="admin-section-h">
+          <h3>Pending approvals</h3>
+          <span class="admin-section-sub">New sign-ups awaiting activation.</span>
+        </div>
+        <div id="pendingUsers" class="admin-list"></div>
+        <button class="btn-ghost" onclick="loadPendingUsers()" style="margin-top:12px;">Refresh</button>
       </div>
-    </details>
+    </section>
+
+    <!-- ── MATCHES ─────────────────────────────────────────────────── -->
+    <section id="tab-matches" class="admin-tab-panel hidden">
+
+      <div class="admin-section-card">
+        <div class="admin-section-h">
+          <h3>Add match</h3>
+          <span class="admin-section-sub">Kickoff time in UAE local time.</span>
+        </div>
+        <div class="admin-form-grid">
+          <div class="admin-field"><label for="newTeamA">Team A</label><input type="text" id="newTeamA"></div>
+          <div class="admin-field"><label for="newTeamB">Team B</label><input type="text" id="newTeamB"></div>
+          <div class="admin-field"><label for="newStage">Stage</label><input type="text" id="newStage" placeholder="Group Stage / Round of 16"></div>
+          <div class="admin-field"><label for="newVenue">Venue</label><input type="text" id="newVenue"></div>
+          <div class="admin-field admin-field-wide">
+            <label for="newMatchTime">Kick-off (UAE)</label>
+            <input type="datetime-local" id="newMatchTime" step="60">
+          </div>
+        </div>
+        <button class="btn-primary" onclick="addNewMatch()">Add match</button>
+      </div>
+
+      <div class="admin-section-card">
+        <div class="admin-section-h">
+          <h3>Match results</h3>
+          <span class="admin-section-sub">Set results to trigger settlement.</span>
+        </div>
+        <div id="adminMatches" class="admin-list"></div>
+      </div>
+
+    </section>
 
   </div>
 
   <script src="admin.js"></script>
+  <script>
+    // Tab switcher — pure DOM, no framework
+    function showAdminTab(name, btn) {
+      document.querySelectorAll('.admin-tab').forEach(t => t.classList.toggle('active', t === btn));
+      document.querySelectorAll('.admin-tab-panel').forEach(p => p.classList.toggle('hidden', p.id !== 'tab-' + name));
+    }
+    // Reflect pending count as a small badge on the Pending tab.
+    (function watchPendingCount() {
+      setInterval(() => {
+        const list = document.getElementById('pendingUsers');
+        const badge = document.getElementById('pendingBadge');
+        if (!list || !badge) return;
+        const count = list.querySelectorAll('.admin-list-row').length;
+        badge.textContent = count > 0 ? count : '';
+        badge.style.display = count > 0 ? '' : 'none';
+      }, 1200);
+    })();
+  </script>
 </body>
 </html>

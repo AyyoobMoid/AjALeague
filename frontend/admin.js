@@ -76,37 +76,31 @@ async function loadAdminUsers() {
   }
 
   data.forEach(user => {
+    const realName = (user.first_name || user.last_name)
+      ? `${user.first_name || ""} ${user.last_name || ""}`.trim()
+      : (user.full_name || "—");
+    const cashOn = user.cash_eligible === 1;
+    const active = user.is_active === 1;
     box.innerHTML += `
-      <div class="match-item">
-        <h4>${user.username}</h4>
-        <p style="color:#ffd600;font-size:0.85rem;">Real name: ${user.first_name || ""} ${user.last_name || ""}${(!user.first_name && !user.last_name) ? (user.full_name || "—") : ""}</p>
+      <div class="admin-list-row">
+        <div class="admin-row-head">
+          <div class="admin-row-title">
+            <strong>${user.username}</strong>
+            ${user.is_admin === 1 ? '<span class="admin-tag tag-admin">ADMIN</span>' : ''}
+            ${cashOn ? '<span class="admin-tag tag-cash">$ ELIGIBLE</span>' : ''}
+            ${!active ? '<span class="admin-tag tag-disabled">DISABLED</span>' : ''}
+          </div>
+          <div class="admin-row-points mono">${Number(user.points).toLocaleString()}</div>
+        </div>
+        <div class="admin-row-meta">${realName}</div>
 
-        <p>Points: ${user.points}</p>
-        <p>Status: ${user.is_active === 1 ? "Active" : "Disabled"}</p>
-        <p>Admin: ${user.is_admin === 1 ? "Yes" : "No"}</p>
-        <p>Cash prize eligible: ${user.cash_eligible === 1 ? '<span style="color:#22c55e;font-weight:bold;">✓ Yes</span>' : '<span style="color:#888;">No</span>'}</p>
-
-        <input
-          type="number"
-          id="points-${user.id}"
-          placeholder="Add/remove points e.g. 500 or -500"
-        >
-
-        <button onclick="updateUserPoints(${user.id})">
-          Update Points
-        </button>
-
-        <button onclick="toggleUser(${user.id})">
-          ${user.is_active === 1 ? "Disable User" : "Activate User"}
-        </button>
-
-        <button onclick="toggleCashEligible(${user.id})" style="background:${user.cash_eligible === 1 ? 'rgba(34,197,94,0.2)' : 'rgba(255,255,255,0.05)'};border:1px solid rgba(34,197,94,0.4);color:#22c55e;">
-          ${user.cash_eligible === 1 ? "Remove $ Prize Flag" : "Mark $ Prize Eligible"}
-        </button>
-
-        <button onclick="deleteUser(${user.id})">
-  Delete User
-</button>
+        <div class="admin-row-actions">
+          <input type="number" id="points-${user.id}" placeholder="+500 or -500" class="admin-inline-input">
+          <button class="btn-primary btn-sm" onclick="updateUserPoints(${user.id})">Adjust</button>
+          <button class="btn-ghost btn-sm" onclick="toggleUser(${user.id})">${active ? "Disable" : "Activate"}</button>
+          <button class="btn-ghost btn-sm" onclick="toggleCashEligible(${user.id})">${cashOn ? "Remove $" : "Mark $"}</button>
+          <button class="btn-danger btn-sm" onclick="deleteUser(${user.id})">Delete</button>
+        </div>
       </div>
     `;
   });
@@ -230,32 +224,24 @@ async function loadAdminMatches() {
   }
 
   data.forEach(match => {
+    const isKO = adminIsKnockout(match.stage);
+    const settled = !!match.result;
     box.innerHTML += `
-      <div class="match-item">
+      <div class="admin-list-row ${settled ? 'row-settled' : ''}">
+        <div class="admin-row-head">
+          <div class="admin-row-title">
+            <strong>${match.team_a} · ${match.team_b}</strong>
+            ${settled ? `<span class="admin-tag tag-settled">${match.result}</span>` : ''}
+          </div>
+          <div class="admin-row-meta mono">${match.match_time}</div>
+        </div>
+        <div class="admin-row-meta">${match.stage}${match.group_name ? " · " + match.group_name : ""} · <span class="mono">${match.status}</span></div>
 
-        <h3>${match.team_a} vs ${match.team_b}</h3>
-
-        <p>
-          Stage: ${match.stage}
-          ${match.group_name ? " - " + match.group_name : ""}
-        </p>
-
-        <p>Time: ${match.match_time}</p>
-        <p>Status: ${match.status}</p>
-        <p>Result: ${match.result || "Not set"}</p>
-
-        <button onclick="setResult(${match.id}, '${match.team_a}')">
-          ${match.team_a} ${adminIsKnockout(match.stage) ? "Advanced" : "Won"}
-        </button>
-
-        <button onclick="setResult(${match.id}, '${match.team_b}')">
-          ${match.team_b} ${adminIsKnockout(match.stage) ? "Advanced" : "Won"}
-        </button>
-
-        ${adminIsKnockout(match.stage) ? "" : `<button onclick="setResult(${match.id}, 'DRAW')">
-          Draw
-        </button>`}
-
+        <div class="admin-row-actions">
+          <button class="btn-primary btn-sm" onclick="setResult(${match.id}, '${match.team_a}')">${match.team_a} ${isKO ? "advances" : "wins"}</button>
+          ${isKO ? "" : `<button class="btn-ghost btn-sm" onclick="setResult(${match.id}, 'DRAW')">Draw</button>`}
+          <button class="btn-primary btn-sm" onclick="setResult(${match.id}, '${match.team_b}')">${match.team_b} ${isKO ? "advances" : "wins"}</button>
+        </div>
       </div>
     `;
   });
@@ -395,51 +381,6 @@ async function addUserWithPoints() {
 }
 
 
-async function importUsers() {
-  const token = localStorage.getItem("token");
-  const raw = document.getElementById("importJson").value.trim();
-  const resultEl = document.getElementById("importResult");
-
-  if (!raw) {
-    resultEl.innerText = "Paste JSON data first.";
-    return;
-  }
-
-  let users;
-  try {
-    users = JSON.parse(raw);
-    if (!Array.isArray(users)) throw new Error("Must be an array");
-  } catch (e) {
-    resultEl.innerText = "Invalid JSON. Must be an array of user objects.";
-    return;
-  }
-
-  const confirmed = confirm(`Import ${users.length} users? Existing users will have their points updated.`);
-  if (!confirmed) return;
-
-  resultEl.innerText = "Importing...";
-
-  const res = await fetch(`${API}/admin/import-users`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "Authorization": token
-    },
-    body: JSON.stringify({ users })
-  });
-
-  const data = await res.json();
-
-  if (res.ok) {
-    resultEl.innerText = `Done. ${data.imported} new users added, ${data.updated} updated, ${data.failed} failed.`;
-    document.getElementById("importJson").value = "";
-    loadAdminUsers();
-  } else {
-    resultEl.innerText = data.message || "Import failed.";
-  }
-}
-
-
 async function loadPendingUsers() {
   const token = localStorage.getItem("token");
   const res = await fetch(`${API}/admin/users`, {
@@ -454,17 +395,22 @@ async function loadPendingUsers() {
     return;
   }
 
-  box.innerHTML = pending.map(u => `
-    <div class="match-item" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;">
-      <div>
-        <strong>${u.username}</strong>
-        <p style="margin:2px 0;font-size:0.85rem;color:#aaa;">${u.first_name || ""} ${u.last_name || ""}${(!u.first_name && !u.last_name) ? (u.full_name || '—') : ""}</p>
+  box.innerHTML = pending.map(u => {
+    const realName = (u.first_name || u.last_name)
+      ? `${u.first_name || ""} ${u.last_name || ""}`.trim()
+      : (u.full_name || "—");
+    return `
+      <div class="admin-list-row">
+        <div class="admin-row-head">
+          <div class="admin-row-title"><strong>${u.username}</strong></div>
+        </div>
+        <div class="admin-row-meta">${realName}</div>
+        <div class="admin-row-actions">
+          <button class="btn-primary btn-sm" onclick="approveUser(${u.id})">Approve</button>
+        </div>
       </div>
-      <button onclick="approveUser(${u.id})" style="background:rgba(34,197,94,0.15);border:1px solid rgba(34,197,94,0.4);color:#22c55e;padding:6px 16px;border-radius:8px;cursor:pointer;">
-        ✓ Approve
-      </button>
-    </div>
-  `).join('');
+    `;
+  }).join('');
 }
 
 async function approveUser(userId) {
