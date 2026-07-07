@@ -1361,7 +1361,7 @@ function renderMatchCards(data) {
     const groupedByDate = {};
 
     const now36 = new Date();
-    const cutoff = new Date(now36.getTime() + 36 * 60 * 60 * 1000); // 36 hours from now
+    const cutoff = new Date(now36.getTime() + 96 * 60 * 60 * 1000); // 96 hours (4 days) from now
 
     data.forEach(match => {
       // Skip settled matches entirely
@@ -1369,7 +1369,7 @@ function renderMatchCards(data) {
 
       const matchTime = new Date(match.match_time);
 
-      // Only show matches starting within the next 36 hours
+      // Only show matches starting within the next 96 hours (4 days)
       if (matchTime > cutoff) return;
 
       const dateKey = matchTime.toLocaleDateString("en-GB", {
@@ -1394,7 +1394,10 @@ function renderMatchCards(data) {
 
         const openTime = new Date(match.prediction_open);
         const matchTime = new Date(match.match_time);
-        const closeTime = new Date(matchTime.getTime() - 5 * 60 * 1000);
+        // The user asked for "no lockout" — betting stays open as long as odds are
+        // there, right up until kickoff. This drops the older 5-min-before-kickoff
+        // cutoff and the pre-open lockout entirely.
+        const closeTime = matchTime;
 
         // ALL of this user's bets on this match (moneyline + any sidebets)
         const userBets = predictedMatches.filter(
@@ -1441,9 +1444,9 @@ if (match.result) {
     </p>
   `;
 
-} else if (hasBets && now >= openTime && now <= closeTime) {
+} else if (hasBets && now < closeTime) {
 
-  // Has bets and window still open → show placed-bets receipt + cancel/rebuild.
+  // Has bets and kickoff hasn't happened → show placed-bets receipt + cancel/rebuild.
   actionHtml = `
   <div class="countdown-box">
     <span>${L("card.closesIn", "Predictions close in")}:</span>
@@ -1456,7 +1459,7 @@ if (match.result) {
 
 } else if (hasBets) {
 
-  // Has bets but window closed → locked, waiting for result.
+  // Has bets but kickoff has happened → locked, waiting for result.
   const line = match.total_line ? +match.total_line : 2.5;
   const lab = (b) => {
     const t = (b.bet_type || 'moneyline').toLowerCase();
@@ -1471,23 +1474,20 @@ if (match.result) {
     </p>
   `;
 
-} else if (now >= openTime && now <= closeTime && !oddsReady) {
+} else if (!oddsReady && now < closeTime) {
 
-  // Match is open by time, but odds haven't been set yet — don't allow betting on placeholders
+  // No odds yet and kickoff hasn't happened → tell them odds are still being set.
   actionHtml = `
-  <div class="countdown-box">
-    <span>${L("card.closesIn", "Predictions close in")}:</span>
-    <strong id="timer-${match.id}">${getCountdown(closeTime)}</strong>
-  </div>
   <div class="odds-pending-box">
     <p>⏳ ${L("card.oddsPending","Odds not available yet")}</p>
     <small>${L("card.oddsPendingSub","Betting opens for this match once odds are set. Check back soon.")}</small>
   </div>
   `;
 
-} else if (now >= openTime && now <= closeTime) {
+} else if (oddsReady && now < closeTime) {
 
-  // Open, odds ready, no bets yet → the BET BUILDER.
+  // Odds ready, no bets yet, kickoff hasn't happened → the BET BUILDER. No pre-open
+  // gate — the moment odds are set, betting is available.
   actionHtml = `
   <div class="countdown-box">
     <span>${L("card.closesIn", "Predictions close in")}:</span>
@@ -1498,37 +1498,9 @@ if (match.result) {
   </div>
 `;
 
-} else if (now < openTime) {
-
-  const openDate = openTime.toLocaleDateString("en-GB", {
-    day: "2-digit",
-    month: "long",
-    year: "numeric",
-    timeZone: "Asia/Dubai"
-  });
-
-  const openClock = openTime.toLocaleTimeString("en-GB", {
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-    timeZone: "Asia/Dubai"
-  });
-
-  const msUntilOpen = openTime - now;
-  const hoursUntil = Math.floor(msUntilOpen / (1000 * 60 * 60));
-  const minsUntil = Math.floor((msUntilOpen % (1000 * 60 * 60)) / (1000 * 60));
-  const countdownStr = hoursUntil > 0 ? `${hoursUntil}h ${minsUntil}m` : `${minsUntil}m`;
-
-  actionHtml = `
-    <p class="locked-text">
-      ${L("card.opensIn","Betting opens in")} <strong>${countdownStr}</strong> (${openDate} ${openClock} ${L("card.uae","UAE")})
-      <br>
-      <span style="font-size:0.8rem;opacity:0.7;">${L("card.closesBefore","Closes 5 min before kickoff")}</span>
-    </p>
-  `;
-
 } else {
 
+  // Past kickoff, no bets placed — betting window is over.
   actionHtml = `
     <p class="locked-text">
       Prediction closed
