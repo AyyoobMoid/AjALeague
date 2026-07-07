@@ -347,11 +347,14 @@ app.post("/api/predict", auth, (req, res) => {
       if (err || !match) return res.status(404).json({ message: "Match not found" });
 
       const now = new Date();
-      const openTime = new Date(match.prediction_open);
-      const closeTime = new Date(match.prediction_close);
+      const matchTime = new Date(match.match_time);
 
-      if (now < openTime || now > closeTime) {
-        return res.status(400).json({ message: "Prediction is not open for this match" });
+      // "No lockout" policy: betting is allowed whenever odds are set and the
+      // match hasn't kicked off. No pre-open window. Odds validity is enforced
+      // below (correctOdds must resolve to > 0), so a match without odds still
+      // rejects any bet on it.
+      if (now >= matchTime) {
+        return res.status(400).json({ message: "Match has already started" });
       }
 
       const knockout = isKnockoutStage(match.stage);
@@ -1619,10 +1622,11 @@ app.post("/api/cancel-predict", auth, (req, res) => {
         return res.status(404).json({ message: "No bets found on this match" });
       }
 
-      db.get("SELECT prediction_close FROM matches WHERE id = ?", [matchId], (err, match) => {
+      db.get("SELECT match_time FROM matches WHERE id = ?", [matchId], (err, match) => {
         if (err || !match) return res.status(404).json({ message: "Match not found" });
-        if (new Date() > new Date(match.prediction_close)) {
-          return res.status(400).json({ message: "Prediction window is closed" });
+        // Same "no lockout" policy — cancels are allowed right up to kickoff.
+        if (new Date() >= new Date(match.match_time)) {
+          return res.status(400).json({ message: "Match has already started" });
         }
 
         const totalRefund = predictions.reduce((sum, p) => sum + p.points_used, 0);
