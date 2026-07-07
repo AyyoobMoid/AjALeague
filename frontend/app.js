@@ -1907,6 +1907,11 @@ document.getElementById("quickSuccessRate").innerText = `${data.successRate}%`;
 function logout() {
   localStorage.removeItem("token");
   localStorage.removeItem("isAdmin");
+  // Do NOT clear seenResultIds:<uname> — that key is user-scoped and needs to
+  // persist so the SAME user doesn't re-see notifications after logout+login.
+  // But do clear currentUsername + session flag so the next user starts clean.
+  localStorage.removeItem("currentUsername");
+  sessionStorage.removeItem("resultsShownThisSession");
 
   lastKnownPoints = null;
   lastKnownRank = null;
@@ -2656,8 +2661,24 @@ async function showRecentResults() {
   // Don't show again if already shown in this browser session (prevents refresh re-trigger)
   if (sessionStorage.getItem("resultsShownThisSession")) return;
 
-  // Load already-seen match IDs
-  const seenRaw = localStorage.getItem("seenResultIds") || "[]";
+  // Load already-seen match IDs. Scope the storage key BY USER so that when a
+  // different account signs in on this browser (or the same one after clearing
+  // storage), they don't inherit or miss notifications belonging to someone else.
+  // Legacy unscoped key ("seenResultIds") is honored once then migrated.
+  const uname = localStorage.getItem("currentUsername") || "";
+  const seenKey = `seenResultIds:${uname.toLowerCase()}`;
+  let seenRaw = localStorage.getItem(seenKey);
+  if (seenRaw === null) {
+    // First run under new scoped key — migrate legacy list once so users don't
+    // get a wave of old notifications the first time this ships.
+    const legacy = localStorage.getItem("seenResultIds");
+    if (legacy) {
+      seenRaw = legacy;
+      localStorage.setItem(seenKey, legacy);
+    } else {
+      seenRaw = "[]";
+    }
+  }
   let seenIds = [];
   try { seenIds = JSON.parse(seenRaw).filter(id => typeof id === "number" && id > 0); } catch(e) { seenIds = []; }
 
@@ -2680,7 +2701,7 @@ async function showRecentResults() {
     const newMatchIds = results.map(r => r.matchId || r.match_id).filter(id => id && id > 0);
     if (newMatchIds.length > 0) {
       const newIds = [...new Set([...seenIds, ...newMatchIds])];
-      localStorage.setItem("seenResultIds", JSON.stringify(newIds));
+      localStorage.setItem(seenKey, JSON.stringify(newIds));
     }
 
     const totalProfit = results.reduce((s, r) => s + r.profit, 0);
