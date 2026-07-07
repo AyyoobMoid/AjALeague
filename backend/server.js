@@ -85,13 +85,26 @@ app.post("/api/register", async (req, res) => {
   try {
     const hashed = await bcrypt.hash(password, 10);
     const fullName = `${firstName} ${lastName}`;
-    db.run(
-      `INSERT INTO users (username, password, full_name, first_name, last_name, country, device_id, points, is_active)
-       VALUES (?, ?, ?, ?, ?, 'N/A', ?, 5000, 0)`,
-      [username, hashed, fullName, firstName, lastName, deviceId || ""],
-      function (err) {
-        if (err) return res.status(400).json({ message: "Account could not be created" });
-        return res.json({ message: "Account created successfully", pending: true });
+
+    // Case-insensitive duplicate check. Login treats "Ayyoob" and "ayyoob" as
+    // the same account, so registration must reject variants that only differ
+    // by case — otherwise later logins would match multiple rows.
+    db.get(
+      "SELECT id FROM users WHERE LOWER(username) = LOWER(?)",
+      [username],
+      (err, existing) => {
+        if (err) return res.status(500).json({ message: "Server error" });
+        if (existing) return res.status(400).json({ message: "That username is already taken" });
+
+        db.run(
+          `INSERT INTO users (username, password, full_name, first_name, last_name, country, device_id, points, is_active)
+           VALUES (?, ?, ?, ?, ?, 'N/A', ?, 5000, 0)`,
+          [username, hashed, fullName, firstName, lastName, deviceId || ""],
+          function (err) {
+            if (err) return res.status(400).json({ message: "Account could not be created" });
+            return res.json({ message: "Account created successfully", pending: true });
+          }
+        );
       }
     );
   } catch {
@@ -101,7 +114,7 @@ app.post("/api/register", async (req, res) => {
 
 app.post("/api/login", (req, res) => {
   const { username, password } = req.body;
-  db.all("SELECT * FROM users WHERE username = ?", [username], async (err, users) => {
+  db.all("SELECT * FROM users WHERE LOWER(username) = LOWER(?)", [username], async (err, users) => {
     if (err || !users || users.length === 0) {
       return res.status(400).json({ message: "Invalid username or password" });
     }
@@ -404,7 +417,7 @@ app.post("/api/predict", auth, (req, res) => {
 app.get("/api/user-history/:username", auth, (req, res) => {
   const { username } = req.params;
 
-  db.get("SELECT id, full_name, username, points FROM users WHERE username = ?", [username], (err, user) => {
+  db.get("SELECT id, full_name, username, points FROM users WHERE LOWER(username) = LOWER(?)", [username], (err, user) => {
     if (err || !user) return res.status(404).json({ message: "User not found" });
 
     db.all(
@@ -425,7 +438,7 @@ app.get("/api/user-history/:username", auth, (req, res) => {
        FROM predictions
        JOIN matches ON predictions.match_id = matches.id
        WHERE predictions.user_id = ? AND predictions.settled = 1
-       ORDER BY predictions.created_at DESC`,
+       ORDER BY matches.match_time DESC, predictions.created_at DESC`,
       [user.id],
       (err, rows) => {
         if (err) return res.status(500).json({ message: "Could not load history" });
@@ -482,7 +495,7 @@ app.get("/api/my-predictions", auth, (req, res) => {
      FROM predictions
      JOIN matches ON predictions.match_id = matches.id
      WHERE predictions.user_id = ?
-     ORDER BY predictions.created_at DESC`,
+     ORDER BY matches.match_time DESC, predictions.created_at DESC`,
     [req.user.id],
     (err, rows) => {
       if (err) return res.status(500).json({ message: "Could not load prediction history" });
@@ -1310,7 +1323,7 @@ app.get("/api/latest-settlement", (req, res) => {
 app.get("/api/user-profile/:username", auth, (req, res) => {
   const username = req.params.username;
   db.get(
-    `SELECT id, username, full_name, room_number, country, created_at, points FROM users WHERE username = ?`,
+    `SELECT id, username, full_name, room_number, country, created_at, points FROM users WHERE LOWER(username) = LOWER(?)`,
     [username],
     (err, user) => {
       if (err || !user) return res.status(404).json({ message: "User not found" });
@@ -1360,12 +1373,21 @@ app.post("/api/admin/add-user", auth, adminOnly, async (req, res) => {
 
   try {
     const hashed = await bcrypt.hash(password, 10);
-    db.run(
-      `INSERT INTO users (username, password, full_name, country, device_id, points, cash_eligible, is_active) VALUES (?, ?, ?, ?, ?, ?, ?, 1)`,
-      [username, hashed, fullName, country, "", points, eligible],
-      function (err) {
-        if (err) return res.status(400).json({ message: "Could not create user — username may already exist" });
-        return res.json({ message: `User ${username} created with ${points} points` });
+    db.get(
+      "SELECT id FROM users WHERE LOWER(username) = LOWER(?)",
+      [username],
+      (err, existing) => {
+        if (err) return res.status(500).json({ message: "Server error" });
+        if (existing) return res.status(400).json({ message: "Username already taken (case-insensitive)" });
+
+        db.run(
+          `INSERT INTO users (username, password, full_name, country, device_id, points, cash_eligible, is_active) VALUES (?, ?, ?, ?, ?, ?, ?, 1)`,
+          [username, hashed, fullName, country, "", points, eligible],
+          function (err) {
+            if (err) return res.status(400).json({ message: "Could not create user" });
+            return res.json({ message: `User ${username} created with ${points} points` });
+          }
+        );
       }
     );
   } catch {
@@ -1405,7 +1427,7 @@ app.post("/api/admin/import-users", auth, adminOnly, async (req, res) => {
       ? u.password  // already bcrypt hashed
       : await require("bcryptjs").hash(password, 10);
 
-    db.get("SELECT id FROM users WHERE username = ?", [u.username], (err, existing) => {
+    db.get("SELECT id FROM users WHERE LOWER(username) = LOWER(?)", [u.username], (err, existing) => {
       if (existing) {
         // User exists — just update points
         db.run("UPDATE users SET points = ?, is_active = 1 WHERE id = ?", [points, existing.id], () => {
