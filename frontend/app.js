@@ -526,9 +526,10 @@ async function bbPlace(matchId) {
     .filter(l => l.pick && l.amount > 0);
 
   if (legs.length === 0) { alert('Tick at least one bet and enter an amount.'); return; }
-  for (const l of legs) {
-    if (l.amount % 5 !== 0) { alert('All amounts must be multiples of 5.'); return; }
-  }
+  // Any positive integer stake is valid — the old "multiple of 5" rule was
+  // dropped when we made typed and slider entry granular. Keeping this here
+  // would silently block slider-produced values like 183 that come from
+  // pixel-granularity on narrow screens.
 
   const totalStake = legs.reduce((s, l) => s + l.amount, 0);
   const totalReturn = legs.reduce((s, l) => s + Math.floor(l.amount * l.odds), 0);
