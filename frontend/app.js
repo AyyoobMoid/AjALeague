@@ -248,7 +248,8 @@ function renderBetBuilder(match) {
             oninput="bbSlide(${match.id}, '${mkt.key}', this.value)">
           <div class="bb-stake-row">
             <input type="number" class="bb-amount" id="bb-amt-${match.id}-${mkt.key}"
-              placeholder="0" min="0" max="${bal}" step="5" value=""
+              placeholder="0" min="0" max="${bal}" step="1" value=""
+              inputmode="numeric" autocomplete="off"
               oninput="bbType(${match.id}, '${mkt.key}', this.value)">
             <div class="bb-quick-row">
               <button type="button" class="bb-quick" onclick="bbQuick(${match.id}, '${mkt.key}', 10)">10%</button>
@@ -313,9 +314,12 @@ function bbPick(matchId, marketKey, btn) {
 
 // Round to the nearest valid bet increment (multiple of 5), clamped to a max.
 function bbSnapVal(raw, max) {
-  let v = Math.round((parseFloat(raw) || 0) / 5) * 5;
+  // Historically this rounded stakes to multiples of 5, but that made typing
+  // impossible (each keystroke would snap the value and rewrite the input,
+  // erasing what you tried to type). Now just clamps to [0, max] as an integer.
+  let v = Math.floor(parseFloat(raw) || 0);
   if (v < 0) v = 0;
-  const m = Math.floor((max || 0) / 5) * 5;
+  const m = Math.floor(max || 0);
   if (v > m) v = m;
   return v;
 }
