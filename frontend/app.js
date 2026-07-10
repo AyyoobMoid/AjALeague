@@ -352,21 +352,38 @@ function bbCommitStake(matchId, marketKey, v) {
 
 // Slider dragged — LIVE, buttery: never overwrite slider.value mid-drag
 // (the native thumb tracks the pointer exactly, step=1, zero jagged jumps).
-// Only the displayed number + state snap to multiples of 5.
+// Uses requestAnimationFrame to coalesce rapid input events into one paint
+// per frame — the input event fires ~100/sec on desktop, ~60/sec on mobile,
+// but we only need to update the DOM once per animation frame (~16ms).
+const _bbSlideRaf = {};
 function bbSlide(matchId, marketKey, rawValue) {
+  const key = `${matchId}-${marketKey}`;
+  // Immediately paint the slider fill — this is a cheap style write that
+  // needs to feel 1:1 with the pointer, no rAF gate.
   const slider = document.getElementById(`bb-slider-${matchId}-${marketKey}`);
   if (!slider) return;
-  bbPaintSlider(slider); // immediate, uses the exact raw position — no lag
-  const max = parseFloat(slider.max) || 0;
-  const v = bbSnapVal(rawValue, max);
-  const num = document.getElementById(`bb-amt-${matchId}-${marketKey}`);
-  if (num) num.value = v === 0 ? '' : v;
-  if (!builderState[matchId]) builderState[matchId] = {};
-  if (!builderState[matchId][marketKey]) builderState[matchId][marketKey] = { amount: 0 };
-  builderState[matchId][marketKey].amount = v;
-  // Recalc elastic maxes for the OTHER legs live, but never reposition THIS
-  // slider while it's being actively dragged.
-  bbRecalc(matchId, marketKey);
+  bbPaintSlider(slider);
+
+  // The rest (state sync, recalc other legs, receipt update) is heavier.
+  // Coalesce to one call per frame — subsequent oninput events during the
+  // same frame just overwrite the pending value.
+  _bbSlideRaf[key] = rawValue;
+  if (_bbSlideRaf[key + ":scheduled"]) return;
+  _bbSlideRaf[key + ":scheduled"] = true;
+  requestAnimationFrame(() => {
+    _bbSlideRaf[key + ":scheduled"] = false;
+    const pendingRaw = _bbSlideRaf[key];
+    const max = parseFloat(slider.max) || 0;
+    const v = bbSnapVal(pendingRaw, max);
+    const num = document.getElementById(`bb-amt-${matchId}-${marketKey}`);
+    if (num) num.value = v === 0 ? '' : v;
+    if (!builderState[matchId]) builderState[matchId] = {};
+    if (!builderState[matchId][marketKey]) builderState[matchId][marketKey] = { amount: 0 };
+    builderState[matchId][marketKey].amount = v;
+    // Recalc elastic maxes for the OTHER legs live, but never reposition THIS
+    // slider while it's being actively dragged (bbRecalc protects activeKey).
+    bbRecalc(matchId, marketKey);
+  });
 }
 
 // Number box typed.
@@ -405,7 +422,7 @@ function bbRecalc(matchId, activeKey) {
   for (let pass = 0; pass < 2; pass++) {
     tickedKeys.forEach(key => {
       const othersSum = tickedKeys.filter(k => k !== key).reduce((s, k) => s + (state[k].amount || 0), 0);
-      const thisMax = Math.max(0, Math.floor((balance - othersSum) / 5) * 5);
+      const thisMax = Math.max(0, balance - othersSum);
       state[key]._max = thisMax;
       if ((state[key].amount || 0) > thisMax) {
         state[key].amount = thisMax;
@@ -430,7 +447,13 @@ function bbRecalc(matchId, activeKey) {
 
     const sliderEl = document.getElementById(`bb-slider-${matchId}-${key}`);
     if (sliderEl) {
-      sliderEl.max = leg._max;
+      // Never rewrite the max on the slider the user is CURRENTLY dragging —
+      // browsers reposition the thumb to fit the new range, which shows up as
+      // the thumb "skipping" or lurching to a different position. Only touch
+      // maxes on inactive legs.
+      if (key !== activeKey) {
+        sliderEl.max = leg._max;
+      }
       bbPaintSlider(sliderEl);
     }
 
@@ -453,7 +476,8 @@ function bbRecalc(matchId, activeKey) {
 
     if (leg.pick && amt > 0) {
       anyLeg = true;
-      if (amt % 5 !== 0) anyInvalid = true;
+      // Any integer stake is valid now — the old %5 check was left over from
+      // when stakes were forced to multiples of 5 and became a silent blocker.
       const ret = Math.floor(amt * leg.odds);
       totalStake += amt;
       totalReturn += ret;
