@@ -3345,9 +3345,30 @@ function collapseForTicker(events) {
   const items = [];
 
   betGroups.forEach(group => {
-    // newest first already (buffer order); find a settlement if present
-    const settle = group.find(e => e.reason === "BET_WON" || e.reason === "BET_LOST" || e.reason === "BET_REFUND");
-    if (settle) { items.push({ ev: settle, at: new Date(group[0].createdAt).getTime() }); return; }
+    // newest first already (buffer order); collect ALL settlements if present
+    const settles = group.filter(e => e.reason === "BET_WON" || e.reason === "BET_LOST" || e.reason === "BET_REFUND");
+    if (settles.length === 1) {
+      items.push({ ev: settles[0], at: new Date(group[0].createdAt).getTime() });
+      return;
+    }
+    if (settles.length > 1) {
+      // Merge into one line: components + net. e.g. 2 wins + 1 loss on the
+      // same match reads "won +10.6k +6.2k −8.2k · net +8.6k" instead of
+      // three separate ticker items (or worse, only one of them).
+      const net = settles.reduce((s, e) => s + (e.delta || 0), 0);
+      const parts = settles.map(e => e.delta || 0).sort((a, b) => b - a); // wins first
+      const m = settles[0].meta || {};
+      items.push({
+        ev: {
+          reason: "SETTLE_GROUP",
+          username: settles[0].username,
+          delta: net,
+          meta: { team_a: m.team_a, team_b: m.team_b, matchId: m.matchId, parts }
+        },
+        at: new Date(group[0].createdAt).getTime()
+      });
+      return;
+    }
     // No settlement: latest placement wins; if the chain ends in a cancel → skip
     const latest = group[0];
     if (latest.reason === "BET_CANCELLED") return;
@@ -3420,6 +3441,26 @@ function formatActivityEvent(ev, opts = {}) {
       text = short
         ? `<b>${name}</b> spun <b>${sign}${num(Math.abs(ev.delta))}</b>`
         : `<b>${name}</b> ${ev.delta >= 0 ? "won" : "lost"} <b>${sign}${Math.abs(ev.delta).toLocaleString()} pts</b> on roulette — picked ${meta.pick || "?"}, landed on ${meta.result || "?"}`;
+      break;
+    }
+    case "SETTLE_GROUP": {
+      // Multiple bets on one match settled together — one merged line:
+      // components (wins first, then losses) followed by the net.
+      // With a single part, skip the redundant breakdown.
+      const net = ev.delta || 0;
+      icon = net > 0 ? "✅" : (net < 0 ? "❌" : "↩");
+      cls = net > 0 ? "up" : (net < 0 ? "down" : "neutral");
+      const verb = net > 0 ? "won" : (net < 0 ? "lost" : "broke even");
+      const netSign = net > 0 ? "+" : (net < 0 ? "−" : "");
+      const partList = meta.parts || [];
+      const parts = partList.map(p => {
+        const s = p > 0 ? "+" : (p < 0 ? "−" : "±");
+        return `${s}${num(Math.abs(p))}`;
+      }).join(" ");
+      const showParts = partList.length > 1;
+      text = short
+        ? `<b>${name}</b> ${verb} <b>${netSign}${num(Math.abs(net))}</b> on ${pair}${showParts ? ` (${parts})` : ""}`
+        : `<b>${name}</b> ${verb} <b>${netSign}${Math.abs(net).toLocaleString()} pts</b> on <b>${pair}</b>${showParts ? ` — ${parts} · net ${netSign}${Math.abs(net).toLocaleString()}` : ""}`;
       break;
     }
     case "ROULETTE_CLUSTER": {
@@ -3508,13 +3549,19 @@ function renderActivityTicker() {
   // times to exceed the viewport width. This guarantees the two loop-copies
   // never both fit on screen — otherwise a single short item visibly doubles.
   track.style.animation = "none";
-  track.innerHTML = items;
+  track.innerHTML = `<span class="feed-ticker-copy">${items}</span>`;
   requestAnimationFrame(() => {
     const oneCopyWidth = track.scrollWidth;
     const minWidth = Math.max(el.clientWidth * 1.2, 1); // fill at least 120% of strip
     const repeats = Math.max(1, Math.ceil(minWidth / Math.max(oneCopyWidth, 1)));
     const padded = items.repeat(repeats);
-    track.innerHTML = padded + padded; // duplicate for the seamless loop
+    // EXACTLY two copy-wrappers. Each wrapper carries its own inter-item gap
+    // and a trailing pad equal to that gap, so the seam between copy 2 and the
+    // wrapped-around copy 1 is indistinguishable from any other gap. The
+    // -50% keyframe then lands precisely on one copy width — no visible reset.
+    track.innerHTML =
+      `<span class="feed-ticker-copy">${padded}</span>` +
+      `<span class="feed-ticker-copy">${padded}</span>`;
 
     requestAnimationFrame(() => {
       const distance = track.scrollWidth / 2;
@@ -3525,6 +3572,51 @@ function renderActivityTicker() {
 }
 
 // ─── Feed (48h raw, newest first) ────────────────────────────────────────────
+// Feed-specific reducer: keep every event (placements, cancels, spins) but
+// merge SETTLEMENTS of the same user+match into one SETTLE_GROUP row — the
+// win and the loss on one match reading as separate rows was confusing.
+function mergeFeedSettlements(events) {
+  const out = [];
+  const grouped = new Map(); // "user|matchId" → index in out[] of the group row
+
+  events.forEach(ev => {
+    const isSettle = ev.reason === "BET_WON" || ev.reason === "BET_LOST" || ev.reason === "BET_REFUND";
+    if (!isSettle) { out.push(ev); return; }
+
+    const mid = (ev.meta && ev.meta.matchId) || "?";
+    const key = `${ev.username}|${mid}`;
+
+    if (!grouped.has(key)) {
+      // First settlement seen for this user+match: start a group in place.
+      const groupEv = {
+        reason: "SETTLE_GROUP",
+        username: ev.username,
+        delta: ev.delta || 0,
+        createdAt: ev.createdAt,
+        meta: {
+          team_a: ev.meta && ev.meta.team_a,
+          team_b: ev.meta && ev.meta.team_b,
+          matchId: mid,
+          parts: [ev.delta || 0]
+        }
+      };
+      grouped.set(key, out.length);
+      out.push(groupEv);
+    } else {
+      // Fold into the existing group row.
+      const g = out[grouped.get(key)];
+      g.delta += (ev.delta || 0);
+      g.meta.parts.push(ev.delta || 0);
+      g.meta.parts.sort((a, b) => b - a); // wins first
+    }
+  });
+
+  // Single-settlement groups: unwrap back to the original single-reason look
+  // by leaving them as SETTLE_GROUP with one part — the formatter reads fine
+  // either way, but net == the single delta so nothing is lost.
+  return out;
+}
+
 function renderActivityFeed() {
   const list = document.getElementById("activityFeed");
   if (!list) return;
@@ -3532,7 +3624,8 @@ function renderActivityFeed() {
     list.innerHTML = `<div class="feed-empty">${L("activity.empty","No activity yet. Place a bet or spin the wheel.")}</div>`;
     return;
   }
-  list.innerHTML = activityBuffer.map((ev, i) => {
+  const merged = mergeFeedSettlements(activityBuffer);
+  list.innerHTML = merged.map((ev, i) => {
     const f = formatActivityEvent(ev, { short: false });
     const when = timeAgo(ev.createdAt);
     // Stagger-in animation only for the first 10 rows on initial paint.

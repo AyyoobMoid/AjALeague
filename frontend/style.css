@@ -2970,18 +2970,24 @@ input[type="number"]::-webkit-outer-spin-button { -webkit-appearance: none; marg
   display: inline-flex;
   align-items: center;
   height: 100%;
-  gap: 32px;
-  padding-left: 16px;
   white-space: nowrap;
-  /* Duration + animation set by JS: distance ÷ constant px/sec, so speed stays
-     uniform regardless of how much content is in the strip. */
+  /* Duration set by JS: distance ÷ constant px/sec, so speed stays uniform
+     regardless of content length. Loop is 0 → -50%: the track is EXACTLY two
+     copies of the content (each .feed-ticker-copy carries its own gaps and a
+     trailing pad), so -50% == one copy width == mathematically seamless. */
   will-change: transform;
+}
+.feed-ticker-copy {
+  display: inline-flex;
+  align-items: center;
+  gap: 32px;
+  padding-right: 32px; /* seam gap — identical to the inter-item gap */
 }
 .feed-ticker:hover .feed-ticker-track { animation-play-state: paused; }
 
 @keyframes feedMarquee {
   0%   { transform: translateX(0); }
-  100% { transform: translateX(-50%); } /* -50% because we duplicate content */
+  100% { transform: translateX(-50%); }
 }
 
 .feed-ticker-item {
