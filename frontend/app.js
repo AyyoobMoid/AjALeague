@@ -3499,17 +3499,28 @@ function renderActivityTicker() {
     return `<span class="feed-ticker-item feed-${f.cls}"><span class="feed-icon">${f.icon}</span>${f.text}</span>`;
   }).join("");
 
-  const newContent = items + items; // duplicate for seamless loop
-  if (track.dataset.content === newContent) return; // no change → don't restart anim
-  track.dataset.content = newContent;
-  track.innerHTML = newContent;
+  // Cache-check on the RAW items (before any padding) so unchanged content
+  // doesn't restart the animation.
+  if (track.dataset.content === items) return;
+  track.dataset.content = items;
 
-  // Distance-based duration: constant px/sec regardless of content length.
-  // scrollWidth/2 = one full content pass (content is duplicated).
+  // Measure: render one copy invisibly to get its width, then repeat it enough
+  // times to exceed the viewport width. This guarantees the two loop-copies
+  // never both fit on screen — otherwise a single short item visibly doubles.
+  track.style.animation = "none";
+  track.innerHTML = items;
   requestAnimationFrame(() => {
-    const distance = track.scrollWidth / 2;
-    const secs = Math.max(12, distance / TICKER_SPEED_PX_S);
-    track.style.animationDuration = `${secs}s`;
+    const oneCopyWidth = track.scrollWidth;
+    const minWidth = Math.max(el.clientWidth * 1.2, 1); // fill at least 120% of strip
+    const repeats = Math.max(1, Math.ceil(minWidth / Math.max(oneCopyWidth, 1)));
+    const padded = items.repeat(repeats);
+    track.innerHTML = padded + padded; // duplicate for the seamless loop
+
+    requestAnimationFrame(() => {
+      const distance = track.scrollWidth / 2;
+      const secs = Math.max(12, distance / TICKER_SPEED_PX_S);
+      track.style.animation = `feedMarquee ${secs}s linear infinite`;
+    });
   });
 }
 

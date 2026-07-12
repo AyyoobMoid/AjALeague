@@ -2971,11 +2971,10 @@ input[type="number"]::-webkit-outer-spin-button { -webkit-appearance: none; marg
   align-items: center;
   height: 100%;
   gap: 32px;
-  padding-left: 100%;         /* start off-screen right */
+  padding-left: 16px;
   white-space: nowrap;
-  /* Duration is set by JS: distance ÷ constant px/sec, so speed stays uniform
-     regardless of how much content is in the strip. */
-  animation: feedMarquee 30s linear infinite;
+  /* Duration + animation set by JS: distance ÷ constant px/sec, so speed stays
+     uniform regardless of how much content is in the strip. */
   will-change: transform;
 }
 .feed-ticker:hover .feed-ticker-track { animation-play-state: paused; }
@@ -2993,6 +2992,8 @@ input[type="number"]::-webkit-outer-spin-button { -webkit-appearance: none; marg
   color: var(--ink-2);
   line-height: 1;
   font-variant-numeric: tabular-nums;
+  flex: 0 0 auto;      /* NEVER compress — marquee needs natural overflow width */
+  white-space: nowrap;
 }
 .feed-ticker-item .feed-icon { font-size: 13px; line-height: 1; }
 .feed-ticker-item b { color: var(--ink); font-weight: 600; }
@@ -3000,9 +3001,10 @@ input[type="number"]::-webkit-outer-spin-button { -webkit-appearance: none; marg
 .feed-ticker-item.feed-up b { color: var(--accent); }
 .feed-ticker-item.feed-down b { color: var(--danger); }
 
-/* Respect reduced-motion — pause the marquee entirely */
+/* Respect reduced-motion — pause the marquee entirely.
+   !important needed because JS sets the animation inline. */
 @media (prefers-reduced-motion: reduce) {
-  .feed-ticker-track { animation: none; padding-left: 12px; }
+  .feed-ticker-track { animation: none !important; }
 }
 
 /* RTL: reverse the marquee direction so it reads naturally in Arabic */
