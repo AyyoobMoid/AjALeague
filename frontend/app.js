@@ -3288,100 +3288,152 @@ function localBetType(betType, selected) {
 
 
 // ═════════════════════════════════════════════════════════════════════════════
-// ACTIVITY FEED + LIVE TICKER
-// Two views on the same underlying data:
-//   • Ticker: top-of-app scrolling banner, most-recent 8 events, marquee style.
-//   • Feed:   full list inside the Activity tab, newest first, scroll for more.
-// Polls /api/activity-feed every 8 seconds. On login, seeds the ticker so it
-// isn't empty when you open the app.
+// ACTIVITY FEED + LIVE TICKER (v2)
+//   • Feed:   48h of RAW events, newest first — the league's full receipts.
+//   • Ticker: 24h COLLAPSED — one item per (user, match) with settlement
+//             superseding placement, and roulette runs clustered per user
+//             ("Ayyoob spun 23× · net −15k"). Distance-based marquee speed.
+// Polls every 8s with an id cursor; single buffer feeds both views.
 // ═════════════════════════════════════════════════════════════════════════════
 
-// In-memory event buffer — the newest events at index 0. Capped at 200 rows so
-// it never grows without bound across a long session. New events prepended by
-// pollActivityFeed(); consumed by both ticker and feed renderers.
-let activityBuffer = [];
-let activityLastId = 0; // highest event id we've seen — used as the ?since= cursor
+let activityBuffer = [];      // raw events, newest first, capped
+let activityLastId = 0;
 let activityPollTimer = null;
 
-// Format one event into a compact ticker-friendly string with icon + colour class.
-// Returns { html, cls } where cls is "up" | "down" | "neutral" to tint the row.
+// ─── Number abbreviation for the ticker (feed shows full numbers) ────────────
+function abbrevNum(n) {
+  const abs = Math.abs(n);
+  if (abs >= 1e15) return (n / 1e15).toFixed(1).replace(/\.0$/, "") + "Q";
+  if (abs >= 1e12) return (n / 1e12).toFixed(1).replace(/\.0$/, "") + "T";
+  if (abs >= 1e9)  return (n / 1e9).toFixed(1).replace(/\.0$/, "")  + "B";
+  if (abs >= 1e6)  return (n / 1e6).toFixed(1).replace(/\.0$/, "")  + "M";
+  if (abs >= 1e4)  return (n / 1e3).toFixed(1).replace(/\.0$/, "")  + "k";
+  return n.toLocaleString();
+}
+
+// ─── Collapse reducer for the ticker ─────────────────────────────────────────
+// Rules:
+//  • Bet events group by (username, matchId). If the group contains a
+//    settlement (WON/LOST/REFUND), only the settlement shows. Otherwise the
+//    latest placement state shows. Cancel-with-nothing-after vanishes.
+//  • Roulette groups by username: 1 spin → normal item; 2+ spins → cluster
+//    "spun N× · net ±X".
+//  • Output ordered by each group's most recent event, newest first.
+function collapseForTicker(events) {
+  const cutoff = Date.now() - 24 * 3600 * 1000;
+  const recent = events.filter(e => {
+    const t = new Date(e.createdAt).getTime();
+    return !isNaN(t) && t >= cutoff;
+  });
+
+  const betGroups = new Map();   // "user|matchId" → events[]
+  const rouGroups = new Map();   // "user" → events[]
+
+  recent.forEach(ev => {
+    if (ev.reason === "ROULETTE_SPIN") {
+      const k = ev.username;
+      if (!rouGroups.has(k)) rouGroups.set(k, []);
+      rouGroups.get(k).push(ev);
+    } else {
+      const mid = (ev.meta && ev.meta.matchId) || "?";
+      const k = `${ev.username}|${mid}`;
+      if (!betGroups.has(k)) betGroups.set(k, []);
+      betGroups.get(k).push(ev);
+    }
+  });
+
+  const items = [];
+
+  betGroups.forEach(group => {
+    // newest first already (buffer order); find a settlement if present
+    const settle = group.find(e => e.reason === "BET_WON" || e.reason === "BET_LOST" || e.reason === "BET_REFUND");
+    if (settle) { items.push({ ev: settle, at: new Date(group[0].createdAt).getTime() }); return; }
+    // No settlement: latest placement wins; if the chain ends in a cancel → skip
+    const latest = group[0];
+    if (latest.reason === "BET_CANCELLED") return;
+    items.push({ ev: latest, at: new Date(latest.createdAt).getTime() });
+  });
+
+  rouGroups.forEach((group, user) => {
+    const at = new Date(group[0].createdAt).getTime();
+    if (group.length === 1) { items.push({ ev: group[0], at }); return; }
+    const net = group.reduce((s, e) => s + (e.delta || 0), 0);
+    items.push({ ev: { reason: "ROULETTE_CLUSTER", username: user, delta: net, meta: { spins: group.length } }, at });
+  });
+
+  items.sort((a, b) => b.at - a.at);
+  return items.map(i => i.ev);
+}
+
+// ─── Event → display text ────────────────────────────────────────────────────
 function formatActivityEvent(ev, opts = {}) {
-  const short = opts.short === true; // ticker uses short form, feed uses full form
+  const short = opts.short === true;
+  const num = short ? abbrevNum : (n) => Math.abs(n).toLocaleString();
   const meta = ev.meta || {};
   const name = ev.username || "?";
-  const teamCodePair = (meta.team_a && meta.team_b) ? `${teamCode(meta.team_a)}-${teamCode(meta.team_b)}` : "";
+  const pair = (meta.team_a && meta.team_b) ? `${teamCode(meta.team_a)}-${teamCode(meta.team_b)}` : "";
 
-  let icon = "•";
-  let cls = "neutral";
-  let text = "";
+  let icon = "•", cls = "neutral", text = "";
 
   switch (ev.reason) {
     case "BET_PLACED": {
-      icon = "⚽";
-      cls = "neutral";
-      const stake = Math.abs(ev.delta).toLocaleString();
-      const pickLabel = pickDisplay(meta);
+      icon = "⚽"; cls = "neutral";
+      const stake = num(Math.abs(ev.delta));
       text = short
-        ? `<b>${name}</b> bet <b>${stake}</b> on ${pickLabel}`
-        : `<b>${name}</b> placed a bet on <b>${teamCodePair}</b> — ${pickLabel} · ${stake} pts${meta.odds ? " @ " + Number(meta.odds).toFixed(2) + "x" : ""}`;
+        ? `<b>${name}</b> bet <b>${stake}</b> on ${pickDisplay(meta)}`
+        : `<b>${name}</b> placed a bet on <b>${pair}</b> — ${pickDisplay(meta)} · ${Math.abs(ev.delta).toLocaleString()} pts${meta.odds ? " @ " + Number(meta.odds).toFixed(2) + "x" : ""}`;
       break;
     }
     case "BET_WON": {
-      icon = "✅";
-      cls = "up";
-      const gain = ev.delta.toLocaleString();
+      icon = "✅"; cls = "up";
       text = short
-        ? `<b>${name}</b> won <b>+${gain}</b> on ${teamCodePair}`
-        : `<b>${name}</b> won <b>+${gain} pts</b> on <b>${teamCodePair}</b> — picked ${pickDisplay(meta)}${meta.odds ? " @ " + Number(meta.odds).toFixed(2) + "x" : ""}`;
+        ? `<b>${name}</b> won <b>+${num(ev.delta)}</b> on ${pair}`
+        : `<b>${name}</b> won <b>+${ev.delta.toLocaleString()} pts</b> on <b>${pair}</b> — picked ${pickDisplay(meta)}${meta.odds ? " @ " + Number(meta.odds).toFixed(2) + "x" : ""}`;
       break;
     }
     case "BET_LOST": {
-      icon = "❌";
-      cls = "down";
-      const loss = Math.abs(ev.delta).toLocaleString();
+      icon = "❌"; cls = "down";
       text = short
-        ? `<b>${name}</b> lost <b>${loss}</b> on ${teamCodePair}`
-        : `<b>${name}</b> lost <b>${loss} pts</b> on <b>${teamCodePair}</b> — picked ${pickDisplay(meta)}${meta.result ? " · result " + meta.result : ""}`;
+        ? `<b>${name}</b> lost <b>${num(Math.abs(ev.delta))}</b> on ${pair}`
+        : `<b>${name}</b> lost <b>${Math.abs(ev.delta).toLocaleString()} pts</b> on <b>${pair}</b> — picked ${pickDisplay(meta)}${meta.result ? " · result " + meta.result : ""}`;
       break;
     }
     case "BET_REFUND": {
-      icon = "↩";
-      cls = "neutral";
-      const back = (meta.stake || 0).toLocaleString();
+      icon = "↩"; cls = "neutral";
+      const back = meta.stake || 0;
       text = short
-        ? `<b>${name}</b> refunded <b>${back}</b>`
-        : `<b>${name}</b> was refunded <b>${back} pts</b> on <b>${teamCodePair}</b>`;
+        ? `<b>${name}</b> refunded <b>${num(back)}</b>`
+        : `<b>${name}</b> was refunded <b>${back.toLocaleString()} pts</b> on <b>${pair}</b>`;
       break;
     }
     case "BET_CANCELLED": {
-      icon = "↺";
-      cls = "neutral";
-      const back = ev.delta.toLocaleString();
+      icon = "↺"; cls = "neutral";
       const cnt = meta.count || 1;
       text = short
-        ? `<b>${name}</b> cancelled ${cnt} on ${teamCodePair}`
-        : `<b>${name}</b> cancelled ${cnt} bet${cnt > 1 ? "s" : ""} on <b>${teamCodePair}</b> — refunded ${back} pts`;
+        ? `<b>${name}</b> cancelled ${cnt} on ${pair}`
+        : `<b>${name}</b> cancelled ${cnt} bet${cnt > 1 ? "s" : ""} on <b>${pair}</b> — refunded ${ev.delta.toLocaleString()} pts`;
       break;
     }
     case "ROULETTE_SPIN": {
-      icon = "🎰";
-      cls = ev.delta > 0 ? "up" : (ev.delta < 0 ? "down" : "neutral");
-      const sign = ev.delta > 0 ? "+" : (ev.delta < 0 ? "" : "±");
-      const amt = Math.abs(ev.delta).toLocaleString();
-      const won = ev.delta > 0 ? "won" : "lost";
+      icon = "🎰"; cls = ev.delta > 0 ? "up" : (ev.delta < 0 ? "down" : "neutral");
+      const sign = ev.delta > 0 ? "+" : (ev.delta < 0 ? "−" : "±");
       text = short
-        ? `<b>${name}</b> spun <b>${sign}${amt}</b>`
-        : `<b>${name}</b> ${won} <b>${sign}${amt} pts</b> on roulette — picked ${meta.pick || "?"}, landed on ${meta.result || "?"}`;
+        ? `<b>${name}</b> spun <b>${sign}${num(Math.abs(ev.delta))}</b>`
+        : `<b>${name}</b> ${ev.delta >= 0 ? "won" : "lost"} <b>${sign}${Math.abs(ev.delta).toLocaleString()} pts</b> on roulette — picked ${meta.pick || "?"}, landed on ${meta.result || "?"}`;
+      break;
+    }
+    case "ROULETTE_CLUSTER": {
+      icon = "🎰"; cls = ev.delta > 0 ? "up" : (ev.delta < 0 ? "down" : "neutral");
+      const sign = ev.delta > 0 ? "+" : (ev.delta < 0 ? "−" : "±");
+      text = `<b>${name}</b> spun ${meta.spins}× · net <b>${sign}${num(Math.abs(ev.delta))}</b>`;
       break;
     }
     default:
       text = `<b>${name}</b> — ${ev.reason}`;
   }
-
   return { icon, cls, text };
 }
 
-// Small helper: format the pick from a meta blob (handles moneyline vs sidebets)
 function pickDisplay(meta) {
   if (!meta || !meta.pick) return "?";
   const type = (meta.betType || "moneyline").toLowerCase();
@@ -3391,35 +3443,33 @@ function pickDisplay(meta) {
   return `${teamCode(meta.pick)}`;
 }
 
-// Poll the server for new events since the last one we saw, prepend to buffer.
+// ─── Polling ─────────────────────────────────────────────────────────────────
 async function pollActivityFeed() {
   const token = localStorage.getItem("token");
   if (!token) return;
+  // Skip network work while the tab is hidden — resumes on visibilitychange.
+  if (document.hidden) return;
   try {
     const url = activityLastId > 0
-      ? `${API}/activity-feed?since=${activityLastId}&limit=50`
-      : `${API}/activity-feed?limit=50`;
+      ? `${API}/activity-feed?since=${activityLastId}&hours=48&limit=200`
+      : `${API}/activity-feed?hours=48&limit=200`;
     const res = await fetch(url, { headers: { "Authorization": token } });
     if (!res.ok) return;
     const events = await res.json();
     if (!Array.isArray(events) || events.length === 0) return;
 
-    // Prepend (they're already newest-first from the server).
-    activityBuffer = [...events, ...activityBuffer].slice(0, 200);
+    activityBuffer = [...events, ...activityBuffer].slice(0, 400);
     activityLastId = Math.max(activityLastId, ...events.map(e => e.id));
 
-    // Refresh both views if they're visible.
     renderActivityTicker();
-    if (!document.getElementById("statsSection").classList.contains("hidden")) {
-      renderActivityFeed();
-    }
+    const stats = document.getElementById("statsSection");
+    if (stats && !stats.classList.contains("hidden")) renderActivityFeed();
   } catch (_) { /* transient, retry next tick */ }
 }
 
-// Start/stop polling depending on login state.
 function startActivityPolling() {
   if (activityPollTimer) return;
-  pollActivityFeed(); // fire immediately
+  pollActivityFeed();
   activityPollTimer = setInterval(pollActivityFeed, 8000);
 }
 function stopActivityPolling() {
@@ -3427,24 +3477,43 @@ function stopActivityPolling() {
   activityBuffer = [];
   activityLastId = 0;
 }
+// Immediate refresh when the tab comes back into focus.
+document.addEventListener("visibilitychange", () => {
+  if (!document.hidden && activityPollTimer) pollActivityFeed();
+});
 
-// The ticker: horizontal marquee showing the 8 most recent events.
+// ─── Ticker (24h collapsed, distance-based marquee speed) ────────────────────
+const TICKER_SPEED_PX_S = 55; // higher = faster scroll
+
 function renderActivityTicker() {
   const el = document.getElementById("feedTicker");
   const track = document.getElementById("feedTickerTrack");
   if (!el || !track) return;
-  const recent = activityBuffer.slice(0, 8);
-  if (recent.length === 0) { el.hidden = true; return; }
+
+  const collapsed = collapseForTicker(activityBuffer).slice(0, 14);
+  if (collapsed.length === 0) { el.hidden = true; return; }
   el.hidden = false;
-  // Duplicate the content so the CSS marquee can loop seamlessly.
-  const items = recent.map(ev => {
+
+  const items = collapsed.map(ev => {
     const f = formatActivityEvent(ev, { short: true });
     return `<span class="feed-ticker-item feed-${f.cls}"><span class="feed-icon">${f.icon}</span>${f.text}</span>`;
   }).join("");
-  track.innerHTML = items + items; // two copies, marquee loops one full pass
+
+  const newContent = items + items; // duplicate for seamless loop
+  if (track.dataset.content === newContent) return; // no change → don't restart anim
+  track.dataset.content = newContent;
+  track.innerHTML = newContent;
+
+  // Distance-based duration: constant px/sec regardless of content length.
+  // scrollWidth/2 = one full content pass (content is duplicated).
+  requestAnimationFrame(() => {
+    const distance = track.scrollWidth / 2;
+    const secs = Math.max(12, distance / TICKER_SPEED_PX_S);
+    track.style.animationDuration = `${secs}s`;
+  });
 }
 
-// The full feed in the Activity tab.
+// ─── Feed (48h raw, newest first) ────────────────────────────────────────────
 function renderActivityFeed() {
   const list = document.getElementById("activityFeed");
   if (!list) return;
@@ -3452,11 +3521,13 @@ function renderActivityFeed() {
     list.innerHTML = `<div class="feed-empty">${L("activity.empty","No activity yet. Place a bet or spin the wheel.")}</div>`;
     return;
   }
-  list.innerHTML = activityBuffer.map(ev => {
+  list.innerHTML = activityBuffer.map((ev, i) => {
     const f = formatActivityEvent(ev, { short: false });
     const when = timeAgo(ev.createdAt);
+    // Stagger-in animation only for the first 10 rows on initial paint.
+    const delay = i < 10 ? ` style="animation-delay:${i * 30}ms"` : "";
     return `
-      <div class="feed-row feed-${f.cls}" onclick="showUserHistory('${(ev.username || '').replace(/'/g,"\\'")}')">
+      <div class="feed-row feed-${f.cls} feed-enter"${delay} onclick="showUserHistory('${(ev.username || '').replace(/'/g,"\\'")}')">
         <div class="feed-row-icon">${f.icon}</div>
         <div class="feed-row-body">
           <div class="feed-row-text">${f.text}</div>
@@ -3467,12 +3538,8 @@ function renderActivityFeed() {
   }).join("");
 }
 
-// Wrapper — call from showStatsSection.
-function loadActivityFeed() {
-  renderActivityFeed();
-}
+function loadActivityFeed() { renderActivityFeed(); }
 
-// Simple relative-time formatter — "now", "3m ago", "2h ago", "3d ago".
 function timeAgo(iso) {
   if (!iso) return "";
   const d = new Date(iso);

@@ -2973,7 +2973,9 @@ input[type="number"]::-webkit-outer-spin-button { -webkit-appearance: none; marg
   gap: 32px;
   padding-left: 100%;         /* start off-screen right */
   white-space: nowrap;
-  animation: feedMarquee 60s linear infinite;
+  /* Duration is set by JS: distance ÷ constant px/sec, so speed stays uniform
+     regardless of how much content is in the strip. */
+  animation: feedMarquee 30s linear infinite;
   will-change: transform;
 }
 .feed-ticker:hover .feed-ticker-track { animation-play-state: paused; }
@@ -3074,4 +3076,17 @@ input[type="number"]::-webkit-outer-spin-button { -webkit-appearance: none; marg
   text-align: center;
   color: var(--dim);
   font-size: 13px;
+}
+
+/* Feed rows stagger in on first paint — subtle rise + fade. Capped to the
+   first 10 rows by JS (only they get an animation-delay). */
+.feed-enter {
+  animation: feedRowIn 0.32s var(--ease-out) both;
+}
+@keyframes feedRowIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .feed-enter { animation: none; }
 }
