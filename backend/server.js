@@ -178,6 +178,38 @@ db.run(
   (err) => { if (err) console.log("roulette_spins table init:", err.message); }
 );
 
+// Public activity feed — every event that moves a balance gets a row here.
+// The frontend polls /api/activity-feed to build the marquee + feed tab.
+// reason: BET_PLACED, BET_WON, BET_LOST, BET_CANCELLED, ROULETTE_SPIN.
+// meta is a small JSON blob with the specifics (teams, pick, odds, etc.)
+// so the frontend can render a rich label without extra joins.
+db.run(
+  `CREATE TABLE IF NOT EXISTS activity_log (
+     id SERIAL PRIMARY KEY,
+     user_id INTEGER NOT NULL,
+     username VARCHAR(100) NOT NULL,
+     delta INTEGER NOT NULL,        -- signed: how the balance moved
+     reason VARCHAR(30) NOT NULL,
+     meta TEXT,                     -- JSON blob (nullable)
+     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+   )`,
+  [],
+  (err) => { if (err) console.log("activity_log table init:", err.message); }
+);
+// Index on created_at so /activity-feed?since=X is fast even at 10k+ rows.
+db.run(`CREATE INDEX IF NOT EXISTS idx_activity_log_created_at ON activity_log (created_at DESC)`, [], () => {});
+
+// Helper — called from every place a balance changes.
+// Fire-and-forget: errors here shouldn't block the actual bet/spin/cancel.
+function logActivity(userId, username, delta, reason, meta) {
+  const metaJson = meta ? JSON.stringify(meta) : null;
+  db.run(
+    `INSERT INTO activity_log (user_id, username, delta, reason, meta) VALUES (?, ?, ?, ?, ?)`,
+    [userId, username, delta, reason, metaJson],
+    (err) => { if (err) console.log("activity_log insert failed:", err.message); }
+  );
+}
+
 // Decide a pocket fairly. Returns 'red' | 'black' | 'green'.
 function spinWheel() {
   const n = crypto.randomInt(ROULETTE.pockets); // 0..36, cryptographically fair
@@ -241,6 +273,11 @@ app.post("/api/roulette/spin", auth, (req, res) => {
             // result, but we do want to know about it.
             if (lErr) console.log("roulette ledger insert failed:", lErr.message);
 
+            // Feed event: roulette spin. Delta is the player's signed net.
+            logActivity(req.user.id, req.user.username, net, "ROULETTE_SPIN", {
+              bet, pick, result, won, payout, multiplier: ROULETTE.payout[pick]
+            });
+
             db.get("SELECT points FROM users WHERE id = ?", [req.user.id], (bErr, fresh) => {
               const newBalance = fresh ? fresh.points : null;
               return res.json({
@@ -267,6 +304,39 @@ app.get("/api/roulette/house", (req, res) => {
     if (err) return res.status(500).json({ message: "Could not load roulette house total" });
     res.json({ rouletteHouseNet: Number(row.house_net) || 0, totalSpins: Number(row.spins) || 0 });
   });
+});
+
+// Public activity feed — every balance-moving event across the league.
+// Params: since (event id — return only events with id > since; for polling)
+//         limit (max rows, default 50, capped at 100)
+// Sort: newest first. Frontend prepends new ones to the top.
+app.get("/api/activity-feed", auth, (req, res) => {
+  const since = parseInt(req.query.since) || 0;
+  const limit = Math.min(parseInt(req.query.limit) || 50, 100);
+  const where = since > 0 ? "WHERE id > ?" : "";
+  const params = since > 0 ? [since, limit] : [limit];
+  db.all(
+    `SELECT id, user_id, username, delta, reason, meta, created_at
+     FROM activity_log
+     ${where}
+     ORDER BY id DESC
+     LIMIT ?`,
+    params,
+    (err, rows) => {
+      if (err) return res.status(500).json({ message: "Could not load activity feed" });
+      // Parse meta JSON per row so the frontend gets structured data, not strings.
+      const events = (rows || []).map(r => ({
+        id: r.id,
+        userId: r.user_id,
+        username: r.username,
+        delta: Number(r.delta) || 0,
+        reason: r.reason,
+        meta: r.meta ? (() => { try { return JSON.parse(r.meta); } catch { return {}; } })() : {},
+        createdAt: r.created_at
+      }));
+      res.json(events);
+    }
+  );
 });
 
 // The logged-in player's own roulette P&L (sum of their player_net) + counts.
@@ -407,6 +477,11 @@ app.post("/api/predict", auth, (req, res) => {
           if (err) return res.status(400).json({ message: "You already placed this bet on this match" });
           db.run("UPDATE users SET points = points - ? WHERE id = ?", [amount, req.user.id], function (err) {
             if (err) return res.status(500).json({ message: "Prediction saved but points could not be updated" });
+            // Feed event: bet placed. Delta is negative (stake left the wallet).
+            logActivity(req.user.id, req.user.username, -amount, "BET_PLACED", {
+              matchId, team_a: match.team_a, team_b: match.team_b,
+              pick: storedSelection, betType, odds: oddsUsed
+            });
             return res.json({ message: "Prediction submitted successfully" });
           });
         }
@@ -654,6 +729,34 @@ function settleMatch(matchId, result, callback, homeGoals, awayGoals) {
 
             db.run("UPDATE users SET points = points + ? WHERE id = ?", [reward, prediction.user_id], () => {
               db.run("UPDATE predictions SET settled = 1 WHERE id = ?", [prediction.id], () => {
+                // Feed event: settle. Classify as WON / LOST / REFUND.
+                // For WON: delta = reward - stake (net profit).
+                // For LOST: delta = -stake (the stake was already debited, but
+                //   for the feed we surface it as a loss now, at settlement time,
+                //   when it becomes public knowledge).
+                // For REFUND: delta = 0 (stake back = net zero).
+                let reason, delta;
+                if (reward > prediction.points_used) {
+                  reason = "BET_WON";
+                  delta = reward - prediction.points_used;
+                } else if (reward === prediction.points_used) {
+                  reason = "BET_REFUND";
+                  delta = 0;
+                } else {
+                  reason = "BET_LOST";
+                  delta = -prediction.points_used;
+                }
+                // Look up username since prediction row only has user_id.
+                db.get("SELECT username FROM users WHERE id = ?", [prediction.user_id], (uerr, u) => {
+                  if (!uerr && u) {
+                    logActivity(prediction.user_id, u.username, delta, reason, {
+                      matchId: match.id, team_a: match.team_a, team_b: match.team_b,
+                      pick: prediction.selected_team, betType: prediction.bet_type || "moneyline",
+                      odds: prediction.odds_used ? parseFloat(prediction.odds_used) : null,
+                      stake: prediction.points_used, payout: reward, result
+                    });
+                  }
+                });
                 completed++;
                 if (completed === predictions.length) {
                   writeMsg(() => callback(null, "settled"));
@@ -1622,7 +1725,7 @@ app.post("/api/cancel-predict", auth, (req, res) => {
         return res.status(404).json({ message: "No bets found on this match" });
       }
 
-      db.get("SELECT match_time FROM matches WHERE id = ?", [matchId], (err, match) => {
+      db.get("SELECT match_time, team_a, team_b FROM matches WHERE id = ?", [matchId], (err, match) => {
         if (err || !match) return res.status(404).json({ message: "Match not found" });
         // Same "no lockout" policy — cancels are allowed right up to kickoff.
         if (new Date() >= new Date(match.match_time)) {
@@ -1638,6 +1741,10 @@ app.post("/api/cancel-predict", auth, (req, res) => {
             if (err) return res.status(500).json({ message: "Could not cancel bets" });
             db.run("UPDATE users SET points = points + ? WHERE id = ?", [totalRefund, req.user.id], (err) => {
               if (err) return res.status(500).json({ message: "Bets cancelled but refund failed" });
+              // Feed event: bet cancelled. Delta is positive (stake returned).
+              logActivity(req.user.id, req.user.username, totalRefund, "BET_CANCELLED", {
+                matchId, team_a: match.team_a, team_b: match.team_b, count: predictions.length
+              });
               return res.json({
                 message: `Cancelled ${predictions.length} bet(s), refunded ${totalRefund.toLocaleString()} points`,
                 refunded: totalRefund,
