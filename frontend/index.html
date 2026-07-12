@@ -125,6 +125,11 @@
         <div class="topbar-avatar" id="topbarAvatar" onclick="logout()" title="Sign out">AY</div>
       </div>
 
+      <!-- Live activity ticker — auto-scrolls, hover to pause, tap opens Activity tab -->
+      <div class="feed-ticker" id="feedTicker" onclick="showStatsSection()" hidden>
+        <div class="feed-ticker-track" id="feedTickerTrack"></div>
+      </div>
+
       <!-- Balance hero -->
       <div class="balance-card">
         <div class="balance-label" data-i18n="balance.label">Balance</div>
@@ -185,9 +190,13 @@
 
       <div id="statsSection" class="hidden">
         <div class="section-h">
-          <h2 data-i18n="stats.title">Profile stats</h2>
+          <h2 data-i18n="activity.title">Activity</h2>
         </div>
         <div id="profileStats" style="padding:0 16px 16px;"></div>
+        <div class="section-h" style="padding-top:0;">
+          <h3 style="font-size:14px;color:var(--dim);font-weight:600;text-transform:uppercase;letter-spacing:0.06em;padding-top:8px;" data-i18n="activity.feed">League activity</h3>
+        </div>
+        <div id="activityFeed" style="padding:0 16px 24px;"></div>
       </div>
 
       <div id="rouletteSection" class="hidden">
@@ -261,9 +270,9 @@
         </button>
         <button type="button" class="nav-btn" data-section="statsSection" onclick="showStatsSection()">
           <svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true">
-            <path d="M3 3v18h18"/><path d="M7 16V9"/><path d="M12 16V5"/><path d="M17 16v-4"/>
+            <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
           </svg>
-          <span data-i18n="nav.stats">Stats</span>
+          <span data-i18n="nav.stats">Activity</span>
         </button>
         <button type="button" class="nav-btn" data-section="rouletteSection" onclick="showRouletteSection()">
           <svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true">

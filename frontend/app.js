@@ -681,6 +681,8 @@ function showDashboard() {
   // the balance card visible and empty space below it.
   const lb = document.getElementById("leaderboardSection");
   if (lb) lb.classList.remove("hidden");
+  // Kick off the activity feed poll so the ticker + Activity tab stay live.
+  startActivityPolling();
 }
 
 function enterDashboard() {
@@ -1849,6 +1851,7 @@ function showStatsSection() {
 
   animateSectionIn(section);
   loadProfileStats();
+  loadActivityFeed(); // populate the "League activity" list under stats
   section.scrollIntoView({ behavior: "smooth" });
 }
 
@@ -1923,6 +1926,8 @@ function logout() {
   // But do clear currentUsername + session flag so the next user starts clean.
   localStorage.removeItem("currentUsername");
   sessionStorage.removeItem("resultsShownThisSession");
+  // Kill activity polling — otherwise it'd keep firing with a stale token.
+  stopActivityPolling();
 
   lastKnownPoints = null;
   lastKnownRank = null;
@@ -3177,6 +3182,13 @@ if (window.AJA_I18N && window.AJA_I18N.ar) {
     "bb.intro":          "اختر الرهانات، وحدّد المبلغ لكل واحد، ثم قم بوضعها جميعاً.",
     "bb.rule":           "الوقت الإضافي يُحتسب، ركلات الترجيح لا",
     "bb.ruleTip":        "الأهداف المسجلة في الوقت الأصلي والوقت الإضافي تُحتسب في هذا الرهان. أهداف ركلات الترجيح لا تُحتسب.",
+
+    // ── Activity feed (merged with old Stats tab) ────────────────────
+    "nav.stats":         "النشاط",
+    "activity.title":    "النشاط",
+    "activity.feed":     "نشاط الدوري",
+    "activity.empty":    "لا يوجد نشاط بعد. ضع رهاناً أو أدر العجلة.",
+    "time.now":          "الآن",
     "market.result":     "نتيجة المباراة",
     "market.advance":    "التأهل",
     "market.total":      "مجموع الأهداف",
@@ -3272,4 +3284,203 @@ function localBetType(betType, selected) {
   }
   if (selected === "DRAW") return tr("bet.draw", "Draw");
   return null; // caller handles moneyline (team name) case
+}
+
+
+// ═════════════════════════════════════════════════════════════════════════════
+// ACTIVITY FEED + LIVE TICKER
+// Two views on the same underlying data:
+//   • Ticker: top-of-app scrolling banner, most-recent 8 events, marquee style.
+//   • Feed:   full list inside the Activity tab, newest first, scroll for more.
+// Polls /api/activity-feed every 8 seconds. On login, seeds the ticker so it
+// isn't empty when you open the app.
+// ═════════════════════════════════════════════════════════════════════════════
+
+// In-memory event buffer — the newest events at index 0. Capped at 200 rows so
+// it never grows without bound across a long session. New events prepended by
+// pollActivityFeed(); consumed by both ticker and feed renderers.
+let activityBuffer = [];
+let activityLastId = 0; // highest event id we've seen — used as the ?since= cursor
+let activityPollTimer = null;
+
+// Format one event into a compact ticker-friendly string with icon + colour class.
+// Returns { html, cls } where cls is "up" | "down" | "neutral" to tint the row.
+function formatActivityEvent(ev, opts = {}) {
+  const short = opts.short === true; // ticker uses short form, feed uses full form
+  const meta = ev.meta || {};
+  const name = ev.username || "?";
+  const teamCodePair = (meta.team_a && meta.team_b) ? `${teamCode(meta.team_a)}-${teamCode(meta.team_b)}` : "";
+
+  let icon = "•";
+  let cls = "neutral";
+  let text = "";
+
+  switch (ev.reason) {
+    case "BET_PLACED": {
+      icon = "⚽";
+      cls = "neutral";
+      const stake = Math.abs(ev.delta).toLocaleString();
+      const pickLabel = pickDisplay(meta);
+      text = short
+        ? `<b>${name}</b> bet <b>${stake}</b> on ${pickLabel}`
+        : `<b>${name}</b> placed a bet on <b>${teamCodePair}</b> — ${pickLabel} · ${stake} pts${meta.odds ? " @ " + Number(meta.odds).toFixed(2) + "x" : ""}`;
+      break;
+    }
+    case "BET_WON": {
+      icon = "✅";
+      cls = "up";
+      const gain = ev.delta.toLocaleString();
+      text = short
+        ? `<b>${name}</b> won <b>+${gain}</b> on ${teamCodePair}`
+        : `<b>${name}</b> won <b>+${gain} pts</b> on <b>${teamCodePair}</b> — picked ${pickDisplay(meta)}${meta.odds ? " @ " + Number(meta.odds).toFixed(2) + "x" : ""}`;
+      break;
+    }
+    case "BET_LOST": {
+      icon = "❌";
+      cls = "down";
+      const loss = Math.abs(ev.delta).toLocaleString();
+      text = short
+        ? `<b>${name}</b> lost <b>${loss}</b> on ${teamCodePair}`
+        : `<b>${name}</b> lost <b>${loss} pts</b> on <b>${teamCodePair}</b> — picked ${pickDisplay(meta)}${meta.result ? " · result " + meta.result : ""}`;
+      break;
+    }
+    case "BET_REFUND": {
+      icon = "↩";
+      cls = "neutral";
+      const back = (meta.stake || 0).toLocaleString();
+      text = short
+        ? `<b>${name}</b> refunded <b>${back}</b>`
+        : `<b>${name}</b> was refunded <b>${back} pts</b> on <b>${teamCodePair}</b>`;
+      break;
+    }
+    case "BET_CANCELLED": {
+      icon = "↺";
+      cls = "neutral";
+      const back = ev.delta.toLocaleString();
+      const cnt = meta.count || 1;
+      text = short
+        ? `<b>${name}</b> cancelled ${cnt} on ${teamCodePair}`
+        : `<b>${name}</b> cancelled ${cnt} bet${cnt > 1 ? "s" : ""} on <b>${teamCodePair}</b> — refunded ${back} pts`;
+      break;
+    }
+    case "ROULETTE_SPIN": {
+      icon = "🎰";
+      cls = ev.delta > 0 ? "up" : (ev.delta < 0 ? "down" : "neutral");
+      const sign = ev.delta > 0 ? "+" : (ev.delta < 0 ? "" : "±");
+      const amt = Math.abs(ev.delta).toLocaleString();
+      const won = ev.delta > 0 ? "won" : "lost";
+      text = short
+        ? `<b>${name}</b> spun <b>${sign}${amt}</b>`
+        : `<b>${name}</b> ${won} <b>${sign}${amt} pts</b> on roulette — picked ${meta.pick || "?"}, landed on ${meta.result || "?"}`;
+      break;
+    }
+    default:
+      text = `<b>${name}</b> — ${ev.reason}`;
+  }
+
+  return { icon, cls, text };
+}
+
+// Small helper: format the pick from a meta blob (handles moneyline vs sidebets)
+function pickDisplay(meta) {
+  if (!meta || !meta.pick) return "?";
+  const type = (meta.betType || "moneyline").toLowerCase();
+  if (type === "total") return `Total ${meta.pick}`;
+  if (type === "btts") return `BTTS ${meta.pick}`;
+  if (meta.pick === "DRAW") return "Draw";
+  return `${teamCode(meta.pick)}`;
+}
+
+// Poll the server for new events since the last one we saw, prepend to buffer.
+async function pollActivityFeed() {
+  const token = localStorage.getItem("token");
+  if (!token) return;
+  try {
+    const url = activityLastId > 0
+      ? `${API}/activity-feed?since=${activityLastId}&limit=50`
+      : `${API}/activity-feed?limit=50`;
+    const res = await fetch(url, { headers: { "Authorization": token } });
+    if (!res.ok) return;
+    const events = await res.json();
+    if (!Array.isArray(events) || events.length === 0) return;
+
+    // Prepend (they're already newest-first from the server).
+    activityBuffer = [...events, ...activityBuffer].slice(0, 200);
+    activityLastId = Math.max(activityLastId, ...events.map(e => e.id));
+
+    // Refresh both views if they're visible.
+    renderActivityTicker();
+    if (!document.getElementById("statsSection").classList.contains("hidden")) {
+      renderActivityFeed();
+    }
+  } catch (_) { /* transient, retry next tick */ }
+}
+
+// Start/stop polling depending on login state.
+function startActivityPolling() {
+  if (activityPollTimer) return;
+  pollActivityFeed(); // fire immediately
+  activityPollTimer = setInterval(pollActivityFeed, 8000);
+}
+function stopActivityPolling() {
+  if (activityPollTimer) { clearInterval(activityPollTimer); activityPollTimer = null; }
+  activityBuffer = [];
+  activityLastId = 0;
+}
+
+// The ticker: horizontal marquee showing the 8 most recent events.
+function renderActivityTicker() {
+  const el = document.getElementById("feedTicker");
+  const track = document.getElementById("feedTickerTrack");
+  if (!el || !track) return;
+  const recent = activityBuffer.slice(0, 8);
+  if (recent.length === 0) { el.hidden = true; return; }
+  el.hidden = false;
+  // Duplicate the content so the CSS marquee can loop seamlessly.
+  const items = recent.map(ev => {
+    const f = formatActivityEvent(ev, { short: true });
+    return `<span class="feed-ticker-item feed-${f.cls}"><span class="feed-icon">${f.icon}</span>${f.text}</span>`;
+  }).join("");
+  track.innerHTML = items + items; // two copies, marquee loops one full pass
+}
+
+// The full feed in the Activity tab.
+function renderActivityFeed() {
+  const list = document.getElementById("activityFeed");
+  if (!list) return;
+  if (activityBuffer.length === 0) {
+    list.innerHTML = `<div class="feed-empty">${L("activity.empty","No activity yet. Place a bet or spin the wheel.")}</div>`;
+    return;
+  }
+  list.innerHTML = activityBuffer.map(ev => {
+    const f = formatActivityEvent(ev, { short: false });
+    const when = timeAgo(ev.createdAt);
+    return `
+      <div class="feed-row feed-${f.cls}" onclick="showUserHistory('${(ev.username || '').replace(/'/g,"\\'")}')">
+        <div class="feed-row-icon">${f.icon}</div>
+        <div class="feed-row-body">
+          <div class="feed-row-text">${f.text}</div>
+          <div class="feed-row-when">${when}</div>
+        </div>
+      </div>
+    `;
+  }).join("");
+}
+
+// Wrapper — call from showStatsSection.
+function loadActivityFeed() {
+  renderActivityFeed();
+}
+
+// Simple relative-time formatter — "now", "3m ago", "2h ago", "3d ago".
+function timeAgo(iso) {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (isNaN(d)) return "";
+  const secs = Math.max(0, Math.floor((Date.now() - d.getTime()) / 1000));
+  if (secs < 30)     return L("time.now","now");
+  if (secs < 60)     return `${secs}s`;
+  if (secs < 3600)   return `${Math.floor(secs / 60)}m`;
+  if (secs < 86400)  return `${Math.floor(secs / 3600)}h`;
+  return `${Math.floor(secs / 86400)}d`;
 }

@@ -2948,3 +2948,130 @@ input[type="number"]::-webkit-outer-spin-button { -webkit-appearance: none; marg
   flex: 0 0 auto;
   line-height: 1;
 }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   ACTIVITY TICKER — top-of-app scrolling marquee
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.feed-ticker {
+  position: relative;
+  overflow: hidden;
+  height: 32px;
+  margin: 0 0 4px;
+  background: linear-gradient(180deg, var(--surface) 0%, var(--surface-2) 100%);
+  border-bottom: 1px solid var(--line);
+  cursor: pointer;
+  z-index: 5;
+  /* Fade in/out at edges so text doesn't hard-clip */
+  mask-image: linear-gradient(90deg, transparent 0%, black 8%, black 92%, transparent 100%);
+  -webkit-mask-image: linear-gradient(90deg, transparent 0%, black 8%, black 92%, transparent 100%);
+}
+.feed-ticker-track {
+  display: inline-flex;
+  align-items: center;
+  height: 100%;
+  gap: 32px;
+  padding-left: 100%;         /* start off-screen right */
+  white-space: nowrap;
+  animation: feedMarquee 60s linear infinite;
+  will-change: transform;
+}
+.feed-ticker:hover .feed-ticker-track { animation-play-state: paused; }
+
+@keyframes feedMarquee {
+  0%   { transform: translateX(0); }
+  100% { transform: translateX(-50%); } /* -50% because we duplicate content */
+}
+
+.feed-ticker-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--ink-2);
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+.feed-ticker-item .feed-icon { font-size: 13px; line-height: 1; }
+.feed-ticker-item b { color: var(--ink); font-weight: 600; }
+.feed-ticker-item.feed-up   { color: var(--ink-2); }
+.feed-ticker-item.feed-up b { color: var(--accent); }
+.feed-ticker-item.feed-down b { color: var(--danger); }
+
+/* Respect reduced-motion — pause the marquee entirely */
+@media (prefers-reduced-motion: reduce) {
+  .feed-ticker-track { animation: none; padding-left: 12px; }
+}
+
+/* RTL: reverse the marquee direction so it reads naturally in Arabic */
+[dir="rtl"] .feed-ticker-track { animation-direction: reverse; }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   ACTIVITY FEED — full list inside the Activity tab
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.feed-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 12px 14px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  margin-bottom: 6px;
+  cursor: pointer;
+  transition: border-color var(--dur-fast) var(--ease-out),
+              transform var(--dur-instant) var(--ease-out);
+}
+.feed-row:active { transform: scale(0.99); }
+@media (hover: hover) {
+  .feed-row:hover { border-color: var(--line-2); }
+}
+.feed-row.feed-up   { border-left: 2px solid var(--accent-line); }
+.feed-row.feed-down { border-left: 2px solid var(--danger-line); }
+[dir="rtl"] .feed-row.feed-up,
+[dir="rtl"] .feed-row.feed-down { border-left: 1px solid var(--line); }
+[dir="rtl"] .feed-row.feed-up   { border-right: 2px solid var(--accent-line); }
+[dir="rtl"] .feed-row.feed-down { border-right: 2px solid var(--danger-line); }
+
+.feed-row-icon {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: var(--surface-2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 15px;
+  flex: 0 0 auto;
+  line-height: 1;
+}
+.feed-row-body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.feed-row-text {
+  font-size: 13px;
+  color: var(--ink-2);
+  line-height: 1.45;
+  word-wrap: break-word;
+}
+.feed-row-text b { color: var(--ink); font-weight: 600; }
+.feed-row.feed-up  .feed-row-text b { color: var(--accent); }
+.feed-row.feed-down .feed-row-text b:first-of-type { color: var(--danger); }
+.feed-row-when {
+  font-size: 10px;
+  color: var(--dimmer);
+  font-family: 'JetBrains Mono', monospace;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.04em;
+}
+.feed-empty {
+  padding: 24px 16px;
+  text-align: center;
+  color: var(--dim);
+  font-size: 13px;
+}
