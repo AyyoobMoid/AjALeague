@@ -2922,3 +2922,29 @@ input[type="number"]::-webkit-outer-spin-button { -webkit-appearance: none; marg
 .tag-cash     { background: rgba(255,180,84,0.12); color: var(--warning); border: 1px solid rgba(255,180,84,0.35); }
 .tag-disabled { background: var(--surface-3); color: var(--dim); border: 1px solid var(--line-2); }
 .tag-settled  { background: var(--surface-3); color: var(--dim); border: 1px solid var(--line-2); }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Bet-builder settlement rule note (Total Goals + BTTS)
+   Tells the player how the goals-based markets are settled: extra time counts,
+   penalty shootouts don't. Shown only when the market is expanded.
+   ═══════════════════════════════════════════════════════════════════════════ */
+.bb-rule-note {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  margin: 0 0 10px;
+  background: rgba(255,180,84,0.06);
+  border: 1px solid rgba(255,180,84,0.18);
+  border-radius: var(--radius-sm);
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--dim);
+  cursor: help;
+}
+.bb-rule-icon {
+  color: var(--warning);
+  font-size: 13px;
+  flex: 0 0 auto;
+  line-height: 1;
+}

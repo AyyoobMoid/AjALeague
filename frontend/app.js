@@ -230,6 +230,15 @@ function renderBetBuilder(match) {
        </button>`
     ).join('');
 
+    // Show settlement note on goals-based markets (Total, BTTS) — extra time
+    // counts, penalty shootouts don't. Doesn't apply to moneyline / to-advance.
+    const showRule = (mkt.key === 'total' || mkt.key === 'btts');
+    const ruleNote = showRule ? `
+      <div class="bb-rule-note" title="${L('bb.ruleTip','Goals scored in regulation and extra time both count toward this bet. Penalty shootout goals do not count.')}">
+        <span class="bb-rule-icon" aria-hidden="true">ⓘ</span>
+        <span>${L('bb.rule','Extra time counts, penalty shootouts don\'t')}</span>
+      </div>` : '';
+
     return `
     <div class="bb-market" data-market="${mkt.key}">
       <label class="bb-market-head">
@@ -237,6 +246,7 @@ function renderBetBuilder(match) {
         <span class="bb-market-title">${mkt.title}${mkt.subtitle ? ` <span class="bb-sub">${mkt.subtitle}</span>` : ''}</span>
       </label>
       <div class="bb-market-body hidden" id="bb-body-${match.id}-${mkt.key}">
+        ${ruleNote}
         <div class="bb-opts">${optButtons}</div>
         <div class="bb-stake">
           <div class="bb-stake-top">
@@ -3165,6 +3175,8 @@ if (window.AJA_I18N && window.AJA_I18N.ar) {
 
     // ── Bet-builder markets & intro ──────────────────────────────────
     "bb.intro":          "اختر الرهانات، وحدّد المبلغ لكل واحد، ثم قم بوضعها جميعاً.",
+    "bb.rule":           "الوقت الإضافي يُحتسب، ركلات الترجيح لا",
+    "bb.ruleTip":        "الأهداف المسجلة في الوقت الأصلي والوقت الإضافي تُحتسب في هذا الرهان. أهداف ركلات الترجيح لا تُحتسب.",
     "market.result":     "نتيجة المباراة",
     "market.advance":    "التأهل",
     "market.total":      "مجموع الأهداف",
