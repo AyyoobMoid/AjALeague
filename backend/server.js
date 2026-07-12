@@ -308,17 +308,21 @@ app.get("/api/roulette/house", (req, res) => {
 
 // Public activity feed — every balance-moving event across the league.
 // Params: since (event id — return only events with id > since; for polling)
-//         limit (max rows, default 50, capped at 100)
+//         hours (time window, default 48, capped at 72)
+//         limit (max rows, default 200, capped at 400)
 // Sort: newest first. Frontend prepends new ones to the top.
 app.get("/api/activity-feed", auth, (req, res) => {
   const since = parseInt(req.query.since) || 0;
-  const limit = Math.min(parseInt(req.query.limit) || 50, 100);
-  const where = since > 0 ? "WHERE id > ?" : "";
-  const params = since > 0 ? [since, limit] : [limit];
+  const hours = Math.min(parseInt(req.query.hours) || 48, 72);
+  const limit = Math.min(parseInt(req.query.limit) || 200, 400);
+  const conds = [`created_at > NOW() - INTERVAL '${hours} hours'`];
+  const params = [];
+  if (since > 0) { conds.push("id > ?"); params.push(since); }
+  params.push(limit);
   db.all(
     `SELECT id, user_id, username, delta, reason, meta, created_at
      FROM activity_log
-     ${where}
+     WHERE ${conds.join(" AND ")}
      ORDER BY id DESC
      LIMIT ?`,
     params,
