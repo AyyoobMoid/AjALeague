@@ -3538,12 +3538,14 @@ async function pollActivityFeed() {
     const byId = new Map();
     [...activityBuffer, ...events].forEach(e => byId.set(e.id, e));
     // Second pass: content-signature dedupe. Protects against the same event
-    // existing under two different ids (double-logged rows, id-type quirks).
-    // Signature = who + what + how much + when — identical on all counts means
-    // it's the same real-world event regardless of row id.
+    // existing under two different ids (double-logged rows, backfill overlap).
+    // Signature = who + what + how much + when-TO-THE-SECOND. Duplicate rows
+    // from a backfill carry the same event time but differ by milliseconds,
+    // so the timestamp is truncated to the second before comparison.
     const bySig = new Map();
     byId.forEach(e => {
-      const sig = `${e.username}|${e.reason}|${e.delta}|${e.createdAt}`;
+      const ts = (e.createdAt || "").slice(0, 19); // "2026-07-12T19:34:12" — drop ms
+      const sig = `${e.username}|${e.reason}|${e.delta}|${ts}`;
       const prev = bySig.get(sig);
       if (!prev || e.id < prev.id) bySig.set(sig, e); // keep the earliest row
     });
