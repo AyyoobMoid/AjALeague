@@ -3549,7 +3549,15 @@ async function pollActivityFeed() {
       const prev = bySig.get(sig);
       if (!prev || e.id < prev.id) bySig.set(sig, e); // keep the earliest row
     });
-    activityBuffer = [...bySig.values()].sort((a, b) => b.id - a.id).slice(0, 400);
+    // Sort by EVENT TIME, not row id — backfilled rows were inserted out of
+    // chronological order, so ids don't reliably track when things happened.
+    // The createdAt timestamp carries the true event time; id breaks ties.
+    activityBuffer = [...bySig.values()].sort((a, b) => {
+      const ta = new Date(a.createdAt).getTime() || 0;
+      const tb = new Date(b.createdAt).getTime() || 0;
+      if (tb !== ta) return tb - ta;
+      return b.id - a.id;
+    }).slice(0, 400);
     activityLastId = Math.max(activityLastId, ...events.map(e => e.id));
 
     renderActivityTicker();
