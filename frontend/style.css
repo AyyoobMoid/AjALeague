@@ -3098,3 +3098,129 @@ input[type="number"]::-webkit-outer-spin-button { -webkit-appearance: none; marg
 @media (prefers-reduced-motion: reduce) {
   .feed-enter { animation: none; }
 }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   PLACED-BETS receipt — the "your bets on this match" card
+   (previous markup had no matching CSS at all → rendered as an unstyled
+   word-avalanche; this is the proper Signal treatment)
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.placed-bets {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 14px;
+  background: var(--surface-2);
+  border: 1px solid var(--accent-line);
+  border-radius: var(--radius);
+}
+
+.placed-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink);
+}
+.placed-title-check {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: var(--accent-ink);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 700;
+  flex: 0 0 auto;
+}
+.placed-count {
+  margin-left: auto;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  color: var(--dim);
+  background: var(--surface-3);
+  padding: 2px 8px;
+  border-radius: 100px;
+}
+[dir="rtl"] .placed-count { margin-left: 0; margin-right: auto; }
+
+.placed-legs {
+  display: flex;
+  flex-direction: column;
+}
+.placed-leg {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 0;
+  border-bottom: 1px dashed var(--line);
+}
+.placed-leg:last-child { border-bottom: none; padding-bottom: 0; }
+.placed-leg:first-child { padding-top: 0; }
+.placed-leg-main {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 1;
+}
+.placed-leg-pick {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.placed-leg-odds {
+  font-family: 'JetBrains Mono', monospace;
+  font-variant-numeric: tabular-nums;
+  font-size: 11px;
+  color: var(--dim);
+}
+.placed-leg-win {
+  font-family: 'JetBrains Mono', monospace;
+  font-variant-numeric: tabular-nums;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--accent);
+  white-space: nowrap;
+  flex: 0 0 auto;
+}
+
+.placed-total {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  background: var(--bg);
+  border-radius: var(--radius-sm);
+}
+.placed-total-cell { display: flex; flex-direction: column; gap: 2px; }
+.placed-total-right { text-align: right; }
+[dir="rtl"] .placed-total-right { text-align: left; }
+.placed-total-label {
+  font-size: 10px;
+  color: var(--dim);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.placed-total-val {
+  font-family: 'JetBrains Mono', monospace;
+  font-variant-numeric: tabular-nums;
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--ink);
+}
+.placed-total-val.win { color: var(--accent); }
+
+.placed-note {
+  font-size: 11px;
+  color: var(--dim);
+  line-height: 1.5;
+  margin: 0;
+}

@@ -599,9 +599,11 @@ function renderPlacedBets(match, userBets) {
   const line = match.total_line ? +match.total_line : 2.5;
   const labelFor = (b) => {
     const t = (b.bet_type || 'moneyline').toLowerCase();
-    if (t === 'total') return `Total Goals: ${b.selected_team === 'OVER' ? 'Over' : 'Under'} ${line}`;
-    if (t === 'btts') return `Both Teams To Score: ${b.selected_team === 'YES' ? 'Yes' : 'No'}`;
-    return `${isKnockout(match.stage) && b.selected_team !== 'DRAW' ? b.selected_team + ' to advance' : b.selected_team}`;
+    if (t === 'total') return `${L("bet.total","Total")} ${b.selected_team === 'OVER' ? L("bet.totalOver","Over") : L("bet.totalUnder","Under")} ${line}`;
+    if (t === 'btts') return `${L("bet.btts","BTTS")} ${b.selected_team === 'YES' ? L("bet.yes","Yes") : L("bet.no","No")}`;
+    if (b.selected_team === 'DRAW') return L("bet.draw","Draw");
+    const nm = teamFullName(b.selected_team);
+    return isKnockout(match.stage) ? `${nm} ${L("bet.toAdvance","to advance")}` : nm;
   };
   let totalStake = 0, totalReturn = 0;
   const rows = userBets.map(b => {
@@ -609,19 +611,34 @@ function renderPlacedBets(match, userBets) {
     const ret = odds ? Math.floor(b.points_used * odds) : b.points_used;
     totalStake += b.points_used; totalReturn += ret;
     return `<div class="placed-leg">
-      <span class="placed-leg-pick">${labelFor(b)}</span>
-      <span class="placed-leg-num">${b.points_used.toLocaleString()} @ ${odds ? odds.toFixed(2) + 'x' : '—'}</span>
-      <span class="placed-leg-win">→ ${ret.toLocaleString()}</span>
+      <div class="placed-leg-main">
+        <span class="placed-leg-pick">${labelFor(b)}</span>
+        <span class="placed-leg-odds">${b.points_used.toLocaleString()} @ ${odds ? odds.toFixed(2) + 'x' : '—'}</span>
+      </div>
+      <span class="placed-leg-win">${ret.toLocaleString()}</span>
     </div>`;
   }).join('');
 
   return `
   <div class="placed-bets">
-    <div class="placed-title">✅ Your bets on this match (${userBets.length})</div>
-    ${rows}
-    <div class="placed-total"><span>Staked: <strong>${totalStake.toLocaleString()}</strong></span><span>If all win: <strong class="bb-rcpt-win">${totalReturn.toLocaleString()}</strong></span></div>
-    <p class="placed-note">To change anything, cancel all bets on this match and rebuild. Your stake is fully refunded — but you'll rebuild at the current odds, so locking in early pays off.</p>
-    <button class="cancel-btn" onclick="cancelBet(${match.id})">✕ Cancel all &amp; rebuild</button>
+    <div class="placed-title">
+      <span class="placed-title-check">✓</span>
+      <span>${L("placed.title","Your bets")}</span>
+      <span class="placed-count">${userBets.length}</span>
+    </div>
+    <div class="placed-legs">${rows}</div>
+    <div class="placed-total">
+      <div class="placed-total-cell">
+        <span class="placed-total-label">${L("placed.staked","Staked")}</span>
+        <span class="placed-total-val">${totalStake.toLocaleString()}</span>
+      </div>
+      <div class="placed-total-cell placed-total-right">
+        <span class="placed-total-label">${L("placed.ifWin","If all win")}</span>
+        <span class="placed-total-val win">${totalReturn.toLocaleString()}</span>
+      </div>
+    </div>
+    <p class="placed-note">${L("placed.note","Cancelling refunds your full stake. Rebuilding uses current odds.")}</p>
+    <button class="cancel-btn" onclick="cancelBet(${match.id})">${L("placed.cancel","Cancel all & rebuild")}</button>
   </div>`;
 }
 
@@ -3189,6 +3206,13 @@ if (window.AJA_I18N && window.AJA_I18N.ar) {
     "activity.feed":     "نشاط الدوري",
     "activity.empty":    "لا يوجد نشاط بعد. ضع رهاناً أو أدر العجلة.",
     "time.now":          "الآن",
+
+    // ── Placed-bets receipt ──────────────────────────────────────────
+    "placed.title":      "رهاناتك",
+    "placed.staked":     "الرهان الإجمالي",
+    "placed.ifWin":      "إذا فازت جميعها",
+    "placed.note":       "الإلغاء يعيد رهانك كاملاً. إعادة البناء تستخدم الاحتمالات الحالية.",
+    "placed.cancel":     "إلغاء الكل وإعادة البناء",
     "market.result":     "نتيجة المباراة",
     "market.advance":    "التأهل",
     "market.total":      "مجموع الأهداف",
@@ -3499,7 +3523,21 @@ async function pollActivityFeed() {
     const events = await res.json();
     if (!Array.isArray(events) || events.length === 0) return;
 
-    activityBuffer = [...events, ...activityBuffer].slice(0, 400);
+    // Normalize timestamps: Postgres TIMESTAMP (no tz) serializes as
+    // "2026-07-07 20:00:00.123" which JS parses as LOCAL time — on a UAE
+    // phone that's 4h wrong. Tag it as UTC before it enters the buffer.
+    events.forEach(e => {
+      if (e.createdAt && typeof e.createdAt === "string" &&
+          !/Z$|[+-]\d\d:?\d\d$/.test(e.createdAt)) {
+        e.createdAt = e.createdAt.replace(" ", "T") + "Z";
+      }
+    });
+
+    // Merge, dedupe by id (poll overlap safety), and hard-sort newest-first.
+    // Relying on append order alone let interleaved polls scramble the feed.
+    const byId = new Map();
+    [...activityBuffer, ...events].forEach(e => byId.set(e.id, e));
+    activityBuffer = [...byId.values()].sort((a, b) => b.id - a.id).slice(0, 400);
     activityLastId = Math.max(activityLastId, ...events.map(e => e.id));
 
     renderActivityTicker();
@@ -3627,7 +3665,7 @@ function renderActivityFeed() {
   const merged = mergeFeedSettlements(activityBuffer);
   list.innerHTML = merged.map((ev, i) => {
     const f = formatActivityEvent(ev, { short: false });
-    const when = timeAgo(ev.createdAt);
+    const when = feedWhen(ev.createdAt);
     // Stagger-in animation only for the first 10 rows on initial paint.
     const delay = i < 10 ? ` style="animation-delay:${i * 30}ms"` : "";
     return `
@@ -3654,4 +3692,21 @@ function timeAgo(iso) {
   if (secs < 3600)   return `${Math.floor(secs / 60)}m`;
   if (secs < 86400)  return `${Math.floor(secs / 3600)}h`;
   return `${Math.floor(secs / 86400)}d`;
+}
+
+// Full feed timestamp: relative + exact UAE clock time.
+// <24h old:  "2h · 21:43"   ·   older: "07 Jul · 21:43"
+function feedWhen(iso) {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (isNaN(d)) return "";
+  const clock = d.toLocaleTimeString("en-GB", {
+    hour: "2-digit", minute: "2-digit", hour12: false, timeZone: "Asia/Dubai"
+  });
+  const ageSecs = (Date.now() - d.getTime()) / 1000;
+  if (ageSecs < 86400) return `${timeAgo(iso)} · ${clock}`;
+  const day = d.toLocaleDateString("en-GB", {
+    day: "2-digit", month: "short", timeZone: "Asia/Dubai"
+  });
+  return `${day} · ${clock}`;
 }
