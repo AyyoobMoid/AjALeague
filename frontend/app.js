@@ -3537,7 +3537,17 @@ async function pollActivityFeed() {
     // Relying on append order alone let interleaved polls scramble the feed.
     const byId = new Map();
     [...activityBuffer, ...events].forEach(e => byId.set(e.id, e));
-    activityBuffer = [...byId.values()].sort((a, b) => b.id - a.id).slice(0, 400);
+    // Second pass: content-signature dedupe. Protects against the same event
+    // existing under two different ids (double-logged rows, id-type quirks).
+    // Signature = who + what + how much + when — identical on all counts means
+    // it's the same real-world event regardless of row id.
+    const bySig = new Map();
+    byId.forEach(e => {
+      const sig = `${e.username}|${e.reason}|${e.delta}|${e.createdAt}`;
+      const prev = bySig.get(sig);
+      if (!prev || e.id < prev.id) bySig.set(sig, e); // keep the earliest row
+    });
+    activityBuffer = [...bySig.values()].sort((a, b) => b.id - a.id).slice(0, 400);
     activityLastId = Math.max(activityLastId, ...events.map(e => e.id));
 
     renderActivityTicker();
