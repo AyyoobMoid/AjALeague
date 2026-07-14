@@ -626,7 +626,7 @@ function renderPlacedBets(match, userBets) {
   };
 
   let totalStake = 0, totalReturn = 0;
-  let anyShorter = false, anyLonger = false; // track overall market drift for the footer note
+  let anyImproved = false, anyWorsened = false; // track overall market drift for the footer note
   const rows = userBets.map(b => {
     const odds = b.odds_used ? parseFloat(b.odds_used) : null;
     const ret = odds ? Math.floor(b.points_used * odds) : b.points_used;
@@ -639,11 +639,16 @@ function renderPlacedBets(match, userBets) {
       // Round to the nearest cent-of-odds so float noise (1.700000001) doesn't
       // register as "moved" when it effectively hasn't.
       if (Math.abs(diff) >= 0.01) {
-        const better = diff > 0; // higher odds now = your locked-in price was the better deal
-        anyLonger = anyLonger || better;
-        anyShorter = anyShorter || !better;
-        const arrow = better ? '▲' : '▼';
-        const cls = better ? 'placed-move-up' : 'placed-move-down';
+        // diff > 0 means CURRENT odds are higher than what you locked in —
+        // the market improved. That means rebuilding now would get you a
+        // BETTER price than you already have (the opposite of what this
+        // used to say). diff < 0 means the market shortened, so your
+        // existing locked-in price is the better one to keep.
+        const improved = diff > 0;
+        anyImproved = anyImproved || improved;
+        anyWorsened = anyWorsened || !improved;
+        const arrow = improved ? '▲' : '▼';
+        const cls = improved ? 'placed-move-up' : 'placed-move-down';
         moveHtml = `<span class="placed-leg-move ${cls}" title="${L('placed.nowAt','Now')} ${cur.toFixed(2)}x">${arrow} ${cur.toFixed(2)}x</span>`;
       } else {
         moveHtml = `<span class="placed-leg-move placed-move-flat">${L('placed.unchanged','unchanged')}</span>`;
@@ -661,11 +666,11 @@ function renderPlacedBets(match, userBets) {
 
   // Footer note changes based on whether rebuilding would actually help.
   let note;
-  if (anyLonger && !anyShorter) {
-    note = L("placed.noteBetter","Odds have improved since you bet — rebuilding would lock in a worse price. Your current bets are the better deal.");
-  } else if (anyShorter && !anyLonger) {
-    note = L("placed.noteWorse","Odds have shortened since you bet — rebuilding now would get you a worse price than you already have.");
-  } else if (anyShorter && anyLonger) {
+  if (anyImproved && !anyWorsened) {
+    note = L("placed.noteBetter","Odds have improved since you bet — cancelling and rebuilding now would get you a better price on this leg.");
+  } else if (anyWorsened && !anyImproved) {
+    note = L("placed.noteWorse","Odds have shortened since you bet — your locked-in price is better than what's on offer now. Rebuilding would be worse.");
+  } else if (anyWorsened && anyImproved) {
     note = L("placed.noteMixed","Odds have moved in different directions across your bets — check each leg above before deciding.");
   } else {
     note = L("placed.note","Cancelling refunds your full stake. Rebuilding uses current odds.");
@@ -3267,8 +3272,8 @@ if (window.AJA_I18N && window.AJA_I18N.ar) {
     "placed.cancel":     "إلغاء الكل وإعادة البناء",
     "placed.nowAt":      "الآن",
     "placed.unchanged":  "دون تغيير",
-    "placed.noteBetter": "تحسّنت الاحتمالات منذ رهانك — إعادة البناء ستمنحك سعراً أسوأ. رهانك الحالي هو الأفضل.",
-    "placed.noteWorse":  "انخفضت الاحتمالات منذ رهانك — إعادة البناء الآن ستمنحك سعراً أسوأ مما لديك.",
+    "placed.noteBetter": "تحسّنت الاحتمالات منذ رهانك — الإلغاء وإعادة البناء الآن سيمنحك سعراً أفضل لهذا الرهان.",
+    "placed.noteWorse":  "انخفضت الاحتمالات منذ رهانك — سعرك الحالي أفضل مما هو متاح الآن. إعادة البناء ستكون أسوأ.",
     "placed.noteMixed":  "تحركت الاحتمالات باتجاهات مختلفة عبر رهاناتك — راجع كل رهان أعلاه قبل القرار.",
     "market.result":     "نتيجة المباراة",
     "market.advance":    "التأهل",
