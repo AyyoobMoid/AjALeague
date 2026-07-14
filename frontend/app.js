@@ -605,19 +605,71 @@ function renderPlacedBets(match, userBets) {
     const nm = teamFullName(b.selected_team);
     return isKnockout(match.stage) ? `${nm} ${L("bet.toAdvance","to advance")}` : nm;
   };
+
+  // Map a placed leg back to whatever the CURRENT odds are for that exact
+  // selection, so the player can see if the market has moved since they bet.
+  // Returns null if that market/selection no longer has a live price.
+  const currentOddsFor = (b) => {
+    const t = (b.bet_type || 'moneyline').toLowerCase();
+    if (t === 'total') {
+      const v = b.selected_team === 'OVER' ? match.odds_over : match.odds_under;
+      return v ? +v : null;
+    }
+    if (t === 'btts') {
+      const v = b.selected_team === 'YES' ? match.odds_btts_yes : match.odds_btts_no;
+      return v ? +v : null;
+    }
+    if (b.selected_team === 'DRAW') return match.odds_draw ? +match.odds_draw : null;
+    if (b.selected_team === match.team_a) return match.odds_a ? +match.odds_a : null;
+    if (b.selected_team === match.team_b) return match.odds_b ? +match.odds_b : null;
+    return null;
+  };
+
   let totalStake = 0, totalReturn = 0;
+  let anyShorter = false, anyLonger = false; // track overall market drift for the footer note
   const rows = userBets.map(b => {
     const odds = b.odds_used ? parseFloat(b.odds_used) : null;
     const ret = odds ? Math.floor(b.points_used * odds) : b.points_used;
     totalStake += b.points_used; totalReturn += ret;
+
+    const cur = currentOddsFor(b);
+    let moveHtml = '';
+    if (cur !== null && odds !== null) {
+      const diff = cur - odds;
+      // Round to the nearest cent-of-odds so float noise (1.700000001) doesn't
+      // register as "moved" when it effectively hasn't.
+      if (Math.abs(diff) >= 0.01) {
+        const better = diff > 0; // higher odds now = your locked-in price was the better deal
+        anyLonger = anyLonger || better;
+        anyShorter = anyShorter || !better;
+        const arrow = better ? '▲' : '▼';
+        const cls = better ? 'placed-move-up' : 'placed-move-down';
+        moveHtml = `<span class="placed-leg-move ${cls}" title="${L('placed.nowAt','Now')} ${cur.toFixed(2)}x">${arrow} ${cur.toFixed(2)}x</span>`;
+      } else {
+        moveHtml = `<span class="placed-leg-move placed-move-flat">${L('placed.unchanged','unchanged')}</span>`;
+      }
+    }
+
     return `<div class="placed-leg">
       <div class="placed-leg-main">
         <span class="placed-leg-pick">${labelFor(b)}</span>
-        <span class="placed-leg-odds">${b.points_used.toLocaleString()} @ ${odds ? odds.toFixed(2) + 'x' : '—'}</span>
+        <span class="placed-leg-odds">${b.points_used.toLocaleString()} @ ${odds ? odds.toFixed(2) + 'x' : '—'} ${moveHtml}</span>
       </div>
       <span class="placed-leg-win">${ret.toLocaleString()}</span>
     </div>`;
   }).join('');
+
+  // Footer note changes based on whether rebuilding would actually help.
+  let note;
+  if (anyLonger && !anyShorter) {
+    note = L("placed.noteBetter","Odds have improved since you bet — rebuilding would lock in a worse price. Your current bets are the better deal.");
+  } else if (anyShorter && !anyLonger) {
+    note = L("placed.noteWorse","Odds have shortened since you bet — rebuilding now would get you a worse price than you already have.");
+  } else if (anyShorter && anyLonger) {
+    note = L("placed.noteMixed","Odds have moved in different directions across your bets — check each leg above before deciding.");
+  } else {
+    note = L("placed.note","Cancelling refunds your full stake. Rebuilding uses current odds.");
+  }
 
   return `
   <div class="placed-bets">
@@ -637,7 +689,7 @@ function renderPlacedBets(match, userBets) {
         <span class="placed-total-val win">${totalReturn.toLocaleString()}</span>
       </div>
     </div>
-    <p class="placed-note">${L("placed.note","Cancelling refunds your full stake. Rebuilding uses current odds.")}</p>
+    <p class="placed-note">${note}</p>
     <button class="cancel-btn" onclick="cancelBet(${match.id})">${L("placed.cancel","Cancel all & rebuild")}</button>
   </div>`;
 }
@@ -3213,6 +3265,11 @@ if (window.AJA_I18N && window.AJA_I18N.ar) {
     "placed.ifWin":      "إذا فازت جميعها",
     "placed.note":       "الإلغاء يعيد رهانك كاملاً. إعادة البناء تستخدم الاحتمالات الحالية.",
     "placed.cancel":     "إلغاء الكل وإعادة البناء",
+    "placed.nowAt":      "الآن",
+    "placed.unchanged":  "دون تغيير",
+    "placed.noteBetter": "تحسّنت الاحتمالات منذ رهانك — إعادة البناء ستمنحك سعراً أسوأ. رهانك الحالي هو الأفضل.",
+    "placed.noteWorse":  "انخفضت الاحتمالات منذ رهانك — إعادة البناء الآن ستمنحك سعراً أسوأ مما لديك.",
+    "placed.noteMixed":  "تحركت الاحتمالات باتجاهات مختلفة عبر رهاناتك — راجع كل رهان أعلاه قبل القرار.",
     "market.result":     "نتيجة المباراة",
     "market.advance":    "التأهل",
     "market.total":      "مجموع الأهداف",

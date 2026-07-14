@@ -3224,3 +3224,33 @@ input[type="number"]::-webkit-outer-spin-button { -webkit-appearance: none; marg
   line-height: 1.5;
   margin: 0;
 }
+
+/* Odds-movement indicator on placed-bet legs — shows current live odds next
+   to the price the player locked in, so "cancel & rebuild" is an informed
+   choice instead of a guess. */
+.placed-leg-odds {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.placed-leg-move {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 1px 6px;
+  border-radius: 100px;
+  white-space: nowrap;
+}
+.placed-move-up {
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+.placed-move-down {
+  color: var(--danger);
+  background: rgba(255,107,107,0.1);
+}
+.placed-move-flat {
+  color: var(--dim);
+  background: var(--surface-3);
+}
