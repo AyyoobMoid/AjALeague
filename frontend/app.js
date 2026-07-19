@@ -1279,7 +1279,7 @@ let previousRanks = {};
 // Controlled by window.AJA_TOURNAMENT_ENDED — flip to true when the final
 // settles, and the banner appears above the leaderboard automatically on the
 // next load. Leave false (default) and this function is a silent no-op.
-window.AJA_TOURNAMENT_ENDED = false;
+window.AJA_TOURNAMENT_ENDED = true;
 
 function renderPodium(sortedUsers) {
   const el = document.getElementById("podiumBanner");
