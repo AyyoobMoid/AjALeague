@@ -1274,6 +1274,55 @@ async function login() {
 
 let previousRanks = {};
 
+// ─── PODIUM ─────────────────────────────────────────────────────────────────
+// Renders the top-3 as a memorial podium banner once the tournament is over.
+// Controlled by window.AJA_TOURNAMENT_ENDED — flip to true when the final
+// settles, and the banner appears above the leaderboard automatically on the
+// next load. Leave false (default) and this function is a silent no-op.
+window.AJA_TOURNAMENT_ENDED = false;
+
+function renderPodium(sortedUsers) {
+  const el = document.getElementById("podiumBanner");
+  if (!el) return;
+
+  if (!window.AJA_TOURNAMENT_ENDED || !sortedUsers || sortedUsers.length < 3) {
+    el.classList.add("hidden");
+    el.innerHTML = "";
+    return;
+  }
+
+  const [first, second, third] = sortedUsers;
+  const medal = (place) => place === 1 ? "🥇" : place === 2 ? "🥈" : "🥉";
+  const tierLabel = (u) => getRank(Number(u.points));
+
+  const podiumCard = (u, place) => `
+    <div class="podium-card podium-${place}" onclick="showUserHistory('${(u.username || '').replace(/'/g, "\\'")}')">
+      <div class="podium-medal">${medal(place)}</div>
+      <div class="podium-name">${u.username}</div>
+      <div class="podium-tier">${tierLabel(u)}</div>
+      <div class="podium-points">${Number(u.points).toLocaleString()} <span class="podium-unit">${L('unit.pts','pts')}</span></div>
+      <div class="podium-block"><span class="podium-place-num">${place}</span></div>
+    </div>
+  `;
+
+  // Visual order left-to-right is 2nd, 1st, 3rd — classic podium staggering
+  // with the champion's block tallest in the middle.
+  el.innerHTML = `
+    <div class="podium-wrap">
+      <div class="podium-header">
+        <span class="podium-trophy">🏆</span>
+        <span class="podium-title">${L('podium.title','Final Standings — World Cup 2026')}</span>
+      </div>
+      <div class="podium-row">
+        ${podiumCard(second, 2)}
+        ${podiumCard(first, 1)}
+        ${podiumCard(third, 3)}
+      </div>
+    </div>
+  `;
+  el.classList.remove("hidden");
+}
+
 async function loadLeaderboard() {
   showSkeleton("leaderboard", 5);
   try {
@@ -1289,8 +1338,12 @@ async function loadLeaderboard() {
 
     if (!data || data.length === 0) {
       box.innerHTML = "<p>No players yet.</p>";
+      renderPodium([]); // clears/hides the banner if the league is somehow empty
       return;
     }
+
+    // Podium reads the same sorted leaderboard data — no extra fetch needed.
+    renderPodium(data);
 
     // Pin house entry at top. Coerce to Number — the API value can arrive as a
     // string, and .toLocaleString() on a string like "135796-1495" would print junk.
@@ -3275,6 +3328,9 @@ if (window.AJA_I18N && window.AJA_I18N.ar) {
     "placed.noteBetter": "تحسّنت الاحتمالات منذ رهانك — الإلغاء وإعادة البناء الآن سيمنحك سعراً أفضل لهذا الرهان.",
     "placed.noteWorse":  "انخفضت الاحتمالات منذ رهانك — سعرك الحالي أفضل مما هو متاح الآن. إعادة البناء ستكون أسوأ.",
     "placed.noteMixed":  "تحركت الاحتمالات باتجاهات مختلفة عبر رهاناتك — راجع كل رهان أعلاه قبل القرار.",
+
+    // ── Podium (final standings) ─────────────────────────────────────
+    "podium.title":      "النتائج النهائية — كأس العالم ٢٠٢٦",
     "market.result":     "نتيجة المباراة",
     "market.advance":    "التأهل",
     "market.total":      "مجموع الأهداف",

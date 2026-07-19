@@ -3254,3 +3254,143 @@ input[type="number"]::-webkit-outer-spin-button { -webkit-appearance: none; marg
   color: var(--dim);
   background: var(--surface-3);
 }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   PODIUM — top-3 memorial banner shown above the leaderboard once
+   window.AJA_TOURNAMENT_ENDED is flipped true.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.podium-wrap {
+  padding: 20px 16px 24px;
+  margin-bottom: 4px;
+  background: radial-gradient(ellipse at top, rgba(124,242,156,0.08) 0%, transparent 70%);
+  border-bottom: 1px solid var(--line);
+}
+
+.podium-header {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin-bottom: 20px;
+}
+.podium-trophy { font-size: 20px; line-height: 1; }
+.podium-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink-2);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  text-align: center;
+}
+
+.podium-row {
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  gap: 10px;
+  max-width: 440px;
+  margin: 0 auto;
+}
+
+.podium-card {
+  flex: 1 1 0;
+  max-width: 140px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+  transition: transform var(--dur-fast) var(--ease-out);
+}
+.podium-card:active { transform: scale(0.97); }
+@media (hover: hover) {
+  .podium-card:hover { transform: translateY(-3px); }
+}
+
+.podium-medal {
+  font-size: 30px;
+  line-height: 1;
+  margin-bottom: 2px;
+  filter: drop-shadow(0 2px 8px rgba(0,0,0,0.4));
+}
+
+.podium-name {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--ink);
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+
+.podium-tier {
+  font-size: 10px;
+  color: var(--dim);
+  text-align: center;
+}
+
+.podium-points {
+  font-family: 'JetBrains Mono', monospace;
+  font-variant-numeric: tabular-nums;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--accent);
+  text-align: center;
+  margin-bottom: 6px;
+}
+.podium-unit {
+  font-size: 9px;
+  color: var(--dim);
+  font-weight: 500;
+}
+
+/* The stagger-height block under each card — 1st tallest, 2nd/3rd shorter */
+.podium-block {
+  width: 100%;
+  border-radius: var(--radius-sm) var(--radius-sm) 0 0;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding-top: 6px;
+}
+.podium-place-num {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 15px;
+  font-weight: 800;
+}
+
+.podium-1 .podium-block {
+  height: 78px;
+  background: linear-gradient(180deg, rgba(255,215,0,0.16), rgba(255,215,0,0.04));
+  border: 1px solid rgba(255,215,0,0.3);
+  border-bottom: none;
+}
+.podium-1 .podium-place-num { color: #ffd700; }
+.podium-1 .podium-name { font-size: 15px; }
+.podium-1 .podium-points { font-size: 15px; }
+
+.podium-2 .podium-block {
+  height: 58px;
+  background: linear-gradient(180deg, rgba(192,192,192,0.14), rgba(192,192,192,0.03));
+  border: 1px solid rgba(192,192,192,0.28);
+  border-bottom: none;
+}
+.podium-2 .podium-place-num { color: #c0c0c0; }
+
+.podium-3 .podium-block {
+  height: 42px;
+  background: linear-gradient(180deg, rgba(205,127,50,0.14), rgba(205,127,50,0.03));
+  border: 1px solid rgba(205,127,50,0.28);
+  border-bottom: none;
+}
+.podium-3 .podium-place-num { color: #cd7f32; }
+
+/* Mobile: tighten spacing on narrow screens */
+@media (max-width: 380px) {
+  .podium-row { gap: 6px; }
+  .podium-name { font-size: 12px; }
+  .podium-medal { font-size: 26px; }
+}
