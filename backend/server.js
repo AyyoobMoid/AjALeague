@@ -1600,7 +1600,7 @@ app.post("/api/admin/refresh-sidebets", auth, adminOnly, (req, res) => {
 
 // ─── SECRET BETS VIEW (AYYOOB ONLY) ─────────────────────────────────────────
 
-app.get("/api/AyyoobOnly/bets", (req, res) => {
+app.get("/api/AyyoobOnly/bets", auth, adminOnly, (req, res) => {
   db.all(
     `SELECT u.username, u.full_name, m.team_a, m.team_b, m.match_time, m.stage, p.selected_team, p.points_used
      FROM predictions p
