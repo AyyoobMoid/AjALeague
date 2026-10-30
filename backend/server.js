@@ -10,9 +10,15 @@ const db = require("./database");
 
 const app = express();
 const PORT = process.env.PORT || 3000;
-const SECRET = process.env.JWT_SECRET || "football_points_secret_key";
-const FOOTBALL_API_KEY = process.env.FOOTBALL_API_KEY || "4756663574ab4d2f980aa1ac8b41dab7";
-const ODDS_API_KEY = process.env.ODDS_API_KEY || "69a4b7e72c93d662cb2f42ac703f2bef";
+const SECRET = process.env.JWT_SECRET;
+if (!SECRET) {
+  console.error("JWT_SECRET environment variable is required. Refusing to start.");
+  process.exit(1);
+}
+const FOOTBALL_API_KEY = process.env.FOOTBALL_API_KEY;
+const ODDS_API_KEY = process.env.ODDS_API_KEY;
+if (!FOOTBALL_API_KEY) console.log("FOOTBALL_API_KEY is not set. Auto-settling matches is off.");
+if (!ODDS_API_KEY) console.log("ODDS_API_KEY is not set. Odds updates are off.");
 
 // Maps your DB team names <-> football-data.org team names
 const TEAM_NAME_MAP = {
@@ -802,6 +808,7 @@ app.post("/api/admin/result", auth, adminOnly, (req, res) => {
 // ─── AUTO-SETTLE: poll football-data.org ─────────────────────────────────────
 
 async function autoSettleMatches() {
+  if (!FOOTBALL_API_KEY) return;
   try {
     // Get all unsettled matches from DB
     db.all(
@@ -990,6 +997,7 @@ function deriveAdvanceOdds(oddsHome, oddsDraw, oddsAway, margin = 1.05) {
 }
 
 async function fetchAndStoreOdds() {
+  if (!ODDS_API_KEY) return;
   try {
     const fetch = require("node-fetch");
     const res = await fetch(
@@ -1092,6 +1100,7 @@ function applyTwoWayMargin(oddsA, oddsB, margin = 1.05) {
 }
 
 async function fetchAndStoreSidebets() {
+  if (!ODDS_API_KEY) return;
   try {
     const fetch = require("node-fetch");
 
@@ -1582,6 +1591,7 @@ app.post("/api/admin/set-odds", auth, adminOnly, (req, res) => {
 // ─── ADMIN: REFRESH ODDS NOW ──────────────────────────────────────────────────
 
 app.post("/api/admin/refresh-odds", auth, adminOnly, (req, res) => {
+  if (!ODDS_API_KEY) return res.status(503).json({ message: "ODDS_API_KEY is not set" });
   fetchAndStoreOdds();
   res.json({ message: "Odds refresh triggered" });
 });
@@ -1589,6 +1599,7 @@ app.post("/api/admin/refresh-odds", auth, adminOnly, (req, res) => {
 // Manually refresh sidebet (Over/Under + BTTS) odds. Uses per-event API calls,
 // so use sparingly to preserve quota.
 app.post("/api/admin/refresh-sidebets", auth, adminOnly, (req, res) => {
+  if (!ODDS_API_KEY) return res.status(503).json({ message: "ODDS_API_KEY is not set" });
   fetchAndStoreSidebets();
   res.json({ message: "Sidebet odds refresh triggered (Over/Under + BTTS)" });
 });
@@ -1596,7 +1607,7 @@ app.post("/api/admin/refresh-sidebets", auth, adminOnly, (req, res) => {
 
 // ─── SECRET BETS VIEW (AYYOOB ONLY) ─────────────────────────────────────────
 
-app.get("/api/AyyoobOnly/bets", (req, res) => {
+app.get("/api/AyyoobOnly/bets", auth, adminOnly, (req, res) => {
   db.all(
     `SELECT u.username, u.full_name, m.team_a, m.team_b, m.match_time, m.stage, p.selected_team, p.points_used
      FROM predictions p
