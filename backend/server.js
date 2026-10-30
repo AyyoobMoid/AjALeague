@@ -10,7 +10,11 @@ const db = require("./database");
 
 const app = express();
 const PORT = process.env.PORT || 3000;
-const SECRET = process.env.JWT_SECRET || "football_points_secret_key";
+const SECRET = process.env.JWT_SECRET;
+if (!SECRET) {
+  console.error("JWT_SECRET environment variable is required. Refusing to start.");
+  process.exit(1);
+}
 const FOOTBALL_API_KEY = process.env.FOOTBALL_API_KEY || "4756663574ab4d2f980aa1ac8b41dab7";
 const ODDS_API_KEY = process.env.ODDS_API_KEY || "69a4b7e72c93d662cb2f42ac703f2bef";
 
